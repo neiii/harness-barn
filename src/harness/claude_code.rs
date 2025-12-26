@@ -116,7 +116,8 @@ pub fn is_installed() -> bool {
 ///
 /// # Errors
 /// Returns an error if the JSON is malformed or missing required fields.
-pub fn parse_mcp_server(value: &serde_json::Value) -> Result<McpServer> {
+#[allow(dead_code)] // Internal utility for future MCP config reading
+pub(crate) fn parse_mcp_server(value: &serde_json::Value) -> Result<McpServer> {
     let obj = value
         .as_object()
         .ok_or_else(|| Error::UnsupportedMcpConfig {
@@ -219,6 +220,7 @@ pub fn parse_mcp_server(value: &serde_json::Value) -> Result<McpServer> {
     }
 }
 
+#[allow(dead_code)] // Internal utility for future MCP config reading
 fn parse_stdio_server(obj: &serde_json::Map<String, serde_json::Value>) -> Result<McpServer> {
     let command = obj
         .get("command")
@@ -288,7 +290,8 @@ fn parse_stdio_server(obj: &serde_json::Map<String, serde_json::Value>) -> Resul
 ///
 /// # Errors
 /// Returns an error if the JSON is malformed.
-pub fn parse_mcp_servers(config: &serde_json::Value) -> Result<Vec<(String, McpServer)>> {
+#[allow(dead_code)] // Internal utility for future MCP config reading
+pub(crate) fn parse_mcp_servers(config: &serde_json::Value) -> Result<Vec<(String, McpServer)>> {
     let servers_obj = config
         .get("mcpServers")
         .and_then(|v| v.as_object())

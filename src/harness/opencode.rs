@@ -103,22 +103,8 @@ pub fn is_installed() -> bool {
 /// # Errors
 ///
 /// Returns an error if the JSON is malformed or missing required fields.
-///
-/// # Example
-///
-/// ```
-/// use get_harness::harness::opencode::parse_mcp_server;
-/// use serde_json::json;
-///
-/// let config = json!({
-///     "type": "local",
-///     "command": ["npx", "-y", "@modelcontextprotocol/server"],
-///     "enabled": true
-/// });
-///
-/// let server = parse_mcp_server(&config).unwrap();
-/// ```
-pub fn parse_mcp_server(value: &serde_json::Value) -> Result<McpServer> {
+#[allow(dead_code)] // Internal utility for future MCP config reading
+pub(crate) fn parse_mcp_server(value: &serde_json::Value) -> Result<McpServer> {
     let obj = value
         .as_object()
         .ok_or_else(|| Error::UnsupportedMcpConfig {
@@ -153,27 +139,8 @@ pub fn parse_mcp_server(value: &serde_json::Value) -> Result<McpServer> {
 /// # Errors
 ///
 /// Returns an error if the JSON is malformed.
-///
-/// # Example
-///
-/// ```
-/// use get_harness::harness::opencode::parse_mcp_servers;
-/// use serde_json::json;
-///
-/// let config = json!({
-///     "mcp": {
-///         "server-name": {
-///             "type": "local",
-///             "command": ["node", "server.js"],
-///             "enabled": true
-///         }
-///     }
-/// });
-///
-/// let servers = parse_mcp_servers(&config).unwrap();
-/// assert_eq!(servers.len(), 1);
-/// ```
-pub fn parse_mcp_servers(config: &serde_json::Value) -> Result<Vec<(String, McpServer)>> {
+#[allow(dead_code)] // Internal utility for future MCP config reading
+pub(crate) fn parse_mcp_servers(config: &serde_json::Value) -> Result<Vec<(String, McpServer)>> {
     let mcp = config
         .get("mcp")
         .ok_or_else(|| Error::UnsupportedMcpConfig {
@@ -206,6 +173,7 @@ pub fn parse_mcp_servers(config: &serde_json::Value) -> Result<Vec<(String, McpS
     Ok(servers)
 }
 
+#[allow(dead_code)] // Internal utility for future MCP config reading
 fn parse_local_server(obj: &serde_json::Map<String, serde_json::Value>) -> Result<McpServer> {
     // Parse command array: first element is command, rest are args
     let command_array = obj
@@ -281,6 +249,7 @@ fn parse_local_server(obj: &serde_json::Map<String, serde_json::Value>) -> Resul
     }))
 }
 
+#[allow(dead_code)] // Internal utility for future MCP config reading
 fn parse_remote_server(obj: &serde_json::Map<String, serde_json::Value>) -> Result<McpServer> {
     // Parse URL
     let url = obj
