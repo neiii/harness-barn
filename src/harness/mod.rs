@@ -102,10 +102,23 @@ impl Harness {
     ///
     /// # Returns
     ///
-    /// - `Ok(None)` if this harness does not support skills (Claude Code, Goose)
-    /// - `Ok(Some(resource))` if skills are supported (OpenCode)
+    /// - `Ok(None)` if this harness does not support skills (Goose)
+    /// - `Ok(Some(resource))` if skills are supported (Claude Code, OpenCode)
     pub fn skills(&self, scope: &Scope) -> Result<Option<DirectoryResource>> {
         match self.kind {
+            HarnessKind::ClaudeCode => {
+                let path = claude_code::skills_dir(scope)
+                    .ok_or_else(|| Error::NotFound("skills directory".into()))?;
+                Ok(Some(DirectoryResource {
+                    exists: path.exists(),
+                    path,
+                    structure: DirectoryStructure::Nested {
+                        subdir_pattern: "*".into(),
+                        file_name: "SKILL.md".into(),
+                    },
+                    file_format: FileFormat::MarkdownWithFrontmatter,
+                }))
+            }
             HarnessKind::OpenCode => {
                 let path = opencode::skills_dir(scope)
                     .ok_or_else(|| Error::NotFound("skills directory".into()))?;
@@ -119,7 +132,7 @@ impl Harness {
                     file_format: FileFormat::Markdown,
                 }))
             }
-            HarnessKind::ClaudeCode | HarnessKind::Goose => Ok(None),
+            HarnessKind::Goose => Ok(None),
         }
     }
 
@@ -694,11 +707,17 @@ mod tests {
     }
 
     #[test]
-    fn skills_none_for_claude_code() {
-        let harness = Harness::new(HarnessKind::ClaudeCode);
-        let result = harness.skills(&Scope::Global);
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_none());
+    fn skills_for_claude_code() {
+        if !claude_code::is_installed() {
+            return;
+        }
+
+        let harness = Harness::locate(HarnessKind::ClaudeCode).unwrap();
+        let resource = harness.skills(&Scope::Global).unwrap();
+        assert!(resource.is_some());
+        let dir = resource.unwrap();
+        assert!(dir.path.ends_with("skills"));
+        assert!(matches!(dir.structure, DirectoryStructure::Nested { .. }));
     }
 
     #[test]

@@ -42,7 +42,7 @@ Reusable capability definitions. Return `None` if the harness doesn't support sk
 
 | Harness | Global | Project |
 |---------|--------|---------|
-| Claude Code | None | None |
+| Claude Code | `~/.claude/skills/` | `.claude/skills/` |
 | OpenCode | `~/.config/opencode/skill/` | `.opencode/skill/` |
 | Goose | None | None |
 
