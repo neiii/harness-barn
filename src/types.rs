@@ -35,6 +35,24 @@ impl fmt::Display for HarnessKind {
     }
 }
 
+impl HarnessKind {
+    /// All supported harness kinds.
+    ///
+    /// Useful for iterating over all harnesses to check installation status
+    /// or enumerate capabilities.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use get_harness::types::HarnessKind;
+    ///
+    /// for kind in HarnessKind::ALL {
+    ///     println!("{}", kind);
+    /// }
+    /// ```
+    pub const ALL: &'static [Self] = &[Self::ClaudeCode, Self::OpenCode, Self::Goose];
+}
+
 /// Scope for path resolution.
 ///
 /// Determines whether to look up global (user-level) or

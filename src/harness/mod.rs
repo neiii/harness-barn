@@ -47,6 +47,48 @@ impl Harness {
         self.kind
     }
 
+    /// Creates a new harness instance for the given kind.
+    ///
+    /// This does not check if the harness is installed. Use [`is_installed`]
+    /// to check installation status, or [`installed`] to get all installed harnesses.
+    ///
+    /// [`is_installed`]: Harness::is_installed
+    /// [`installed`]: Harness::installed
+    #[must_use]
+    pub fn new(kind: HarnessKind) -> Self {
+        Self { kind }
+    }
+
+    /// Returns `true` if this harness is installed on the current system.
+    ///
+    /// Installation is determined by checking if the harness's global
+    /// configuration directory exists.
+    #[must_use]
+    pub fn is_installed(&self) -> bool {
+        match self.kind {
+            HarnessKind::ClaudeCode => claude_code::is_installed(),
+            HarnessKind::OpenCode => opencode::is_installed(),
+            HarnessKind::Goose => goose::is_installed(),
+        }
+    }
+
+    /// Returns all harnesses that are installed on the current system.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the home directory or config directory cannot
+    /// be determined (required to check installation status).
+    pub fn installed() -> Result<Vec<Harness>> {
+        let mut result = Vec::new();
+        for &kind in HarnessKind::ALL {
+            let harness = Self::new(kind);
+            if harness.is_installed() {
+                result.push(harness);
+            }
+        }
+        Ok(result)
+    }
+
     /// Returns the path to the skills directory for the given scope.
     #[must_use]
     pub fn skills_path(&self, scope: Scope) -> Option<PathBuf> {
@@ -307,5 +349,43 @@ mod tests {
         let path = harness.rules_path(Scope::Project(PathBuf::from("/some/project")));
         assert!(path.is_some());
         assert_eq!(path.unwrap(), PathBuf::from("/some/project"));
+    }
+
+    #[test]
+    fn harness_kind_all_contains_all_variants() {
+        assert_eq!(HarnessKind::ALL.len(), 3);
+        assert!(HarnessKind::ALL.contains(&HarnessKind::ClaudeCode));
+        assert!(HarnessKind::ALL.contains(&HarnessKind::OpenCode));
+        assert!(HarnessKind::ALL.contains(&HarnessKind::Goose));
+    }
+
+    #[test]
+    fn new_creates_harness_without_installation_check() {
+        let harness = Harness::new(HarnessKind::ClaudeCode);
+        assert_eq!(harness.kind(), HarnessKind::ClaudeCode);
+
+        let harness = Harness::new(HarnessKind::OpenCode);
+        assert_eq!(harness.kind(), HarnessKind::OpenCode);
+
+        let harness = Harness::new(HarnessKind::Goose);
+        assert_eq!(harness.kind(), HarnessKind::Goose);
+    }
+
+    #[test]
+    fn is_installed_matches_locate() {
+        for &kind in HarnessKind::ALL {
+            let harness = Harness::new(kind);
+            let is_installed = harness.is_installed();
+            let locate_result = Harness::locate(kind);
+            assert_eq!(is_installed, locate_result.is_ok());
+        }
+    }
+
+    #[test]
+    fn installed_returns_only_installed_harnesses() {
+        let installed = Harness::installed().unwrap();
+        for harness in &installed {
+            assert!(harness.is_installed());
+        }
     }
 }
