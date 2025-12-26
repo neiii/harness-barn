@@ -1,7 +1,11 @@
-//! Cross-platform harness path discovery for AI coding CLI tools.
+#![doc = include_str!("../README.md")]
 //!
-//! This library provides a unified way to discover configuration paths
-//! for various AI coding assistants (Claude Code, OpenCode, Goose).
+//! ## Modules
+//!
+//! - [`harness`] - Harness discovery and path resolution
+//! - [`mcp`] - MCP server type definitions
+//! - [`types`] - Core type definitions
+//! - [`error`] - Error types
 
 pub mod error;
 pub mod harness;
