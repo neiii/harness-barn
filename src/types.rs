@@ -153,3 +153,354 @@ pub struct ConfigResource {
     /// Optional JSON Schema URL for validation.
     pub schema_url: Option<String>,
 }
+
+/// A value that may be a plain string or a reference to an environment variable.
+///
+/// This type handles the different syntax each harness uses for environment
+/// variable references:
+/// - Claude Code: `${VAR}`
+/// - OpenCode: `{env:VAR}`
+/// - Goose: Uses `env_keys` array, values resolved at runtime
+///
+/// # Serde Behavior
+///
+/// Uses `#[serde(untagged)]` for clean JSON representation:
+/// - Plain string: `"hello"` deserializes to `Plain("hello")`
+/// - Object with env key: `{"env": "VAR"}` deserializes to `EnvRef { env: "VAR" }`
+///
+/// # Examples
+///
+/// ```
+/// use get_harness::types::{EnvValue, HarnessKind};
+///
+/// // Create an environment variable reference
+/// let api_key = EnvValue::env("MY_API_KEY");
+///
+/// // Convert to Claude Code format
+/// assert_eq!(api_key.to_native(HarnessKind::ClaudeCode), "${MY_API_KEY}");
+///
+/// // Convert to OpenCode format
+/// assert_eq!(api_key.to_native(HarnessKind::OpenCode), "{env:MY_API_KEY}");
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum EnvValue {
+    /// A plain string value.
+    Plain(String),
+    /// A reference to an environment variable.
+    EnvRef {
+        /// The name of the environment variable.
+        env: String,
+    },
+}
+
+impl EnvValue {
+    /// Creates a plain string value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use get_harness::types::EnvValue;
+    ///
+    /// let value = EnvValue::plain("hello");
+    /// assert_eq!(value.resolve(), Some("hello".to_string()));
+    /// ```
+    #[must_use]
+    pub fn plain(s: impl Into<String>) -> Self {
+        Self::Plain(s.into())
+    }
+
+    /// Creates an environment variable reference.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use get_harness::types::EnvValue;
+    ///
+    /// let value = EnvValue::env("MY_VAR");
+    /// // Resolution depends on whether MY_VAR is set in the environment
+    /// ```
+    #[must_use]
+    pub fn env(var: impl Into<String>) -> Self {
+        Self::EnvRef { env: var.into() }
+    }
+
+    /// Converts to the harness-specific native string format.
+    ///
+    /// # Arguments
+    ///
+    /// * `kind` - The target harness format
+    ///
+    /// # Returns
+    ///
+    /// - For `Plain`: Returns the string as-is
+    /// - For `EnvRef` with Claude Code: Returns `${VAR}`
+    /// - For `EnvRef` with OpenCode: Returns `{env:VAR}`
+    /// - For `EnvRef` with Goose: Resolves the env var immediately
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use get_harness::types::{EnvValue, HarnessKind};
+    ///
+    /// let value = EnvValue::env("API_KEY");
+    /// assert_eq!(value.to_native(HarnessKind::ClaudeCode), "${API_KEY}");
+    /// assert_eq!(value.to_native(HarnessKind::OpenCode), "{env:API_KEY}");
+    /// ```
+    #[must_use]
+    pub fn to_native(&self, kind: HarnessKind) -> String {
+        match self {
+            Self::Plain(s) => s.clone(),
+            Self::EnvRef { env } => match kind {
+                HarnessKind::ClaudeCode => format!("${{{env}}}"),
+                HarnessKind::OpenCode => format!("{{env:{env}}}"),
+                HarnessKind::Goose => {
+                    // Goose resolves env vars at runtime; return resolved value
+                    std::env::var(env).unwrap_or_default()
+                }
+            },
+        }
+    }
+
+    /// Parses a harness-specific native string format into an `EnvValue`.
+    ///
+    /// # Arguments
+    ///
+    /// * `s` - The string to parse
+    /// * `kind` - The source harness format
+    ///
+    /// # Returns
+    ///
+    /// - For Claude Code: Parses `${VAR}` pattern
+    /// - For OpenCode: Parses `{env:VAR}` pattern
+    /// - For Goose: Always returns `Plain` (Goose doesn't use inline syntax)
+    /// - If no pattern matches, returns `Plain`
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use get_harness::types::{EnvValue, HarnessKind};
+    ///
+    /// let value = EnvValue::from_native("${API_KEY}", HarnessKind::ClaudeCode);
+    /// assert_eq!(value, EnvValue::env("API_KEY"));
+    ///
+    /// let value = EnvValue::from_native("{env:API_KEY}", HarnessKind::OpenCode);
+    /// assert_eq!(value, EnvValue::env("API_KEY"));
+    ///
+    /// let value = EnvValue::from_native("plain text", HarnessKind::ClaudeCode);
+    /// assert_eq!(value, EnvValue::plain("plain text"));
+    /// ```
+    #[must_use]
+    pub fn from_native(s: &str, kind: HarnessKind) -> Self {
+        match kind {
+            HarnessKind::ClaudeCode => {
+                // Parse ${VAR} pattern
+                if let Some(var) = s.strip_prefix("${").and_then(|s| s.strip_suffix('}')) {
+                    Self::EnvRef {
+                        env: var.to_string(),
+                    }
+                } else {
+                    Self::Plain(s.to_string())
+                }
+            }
+            HarnessKind::OpenCode => {
+                // Parse {env:VAR} pattern
+                if let Some(var) = s.strip_prefix("{env:").and_then(|s| s.strip_suffix('}')) {
+                    Self::EnvRef {
+                        env: var.to_string(),
+                    }
+                } else {
+                    Self::Plain(s.to_string())
+                }
+            }
+            HarnessKind::Goose => {
+                // Goose doesn't use inline env var syntax; values are always plain
+                Self::Plain(s.to_string())
+            }
+        }
+    }
+
+    /// Resolves the value, looking up environment variables if needed.
+    ///
+    /// # Returns
+    ///
+    /// - For `Plain`: Returns `Some(value)`
+    /// - For `EnvRef`: Returns `Some(value)` if the env var is set, `None` otherwise
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use get_harness::types::EnvValue;
+    ///
+    /// let plain = EnvValue::plain("hello");
+    /// assert_eq!(plain.resolve(), Some("hello".to_string()));
+    ///
+    /// // EnvRef resolution depends on whether the variable is set
+    /// let env_ref = EnvValue::env("UNLIKELY_TO_EXIST_12345");
+    /// assert_eq!(env_ref.resolve(), None);
+    /// ```
+    #[must_use]
+    pub fn resolve(&self) -> Option<String> {
+        match self {
+            Self::Plain(s) => Some(s.clone()),
+            Self::EnvRef { env } => std::env::var(env).ok(),
+        }
+    }
+
+    /// Returns `true` if this is a plain string value.
+    #[must_use]
+    pub fn is_plain(&self) -> bool {
+        matches!(self, Self::Plain(_))
+    }
+
+    /// Returns `true` if this is an environment variable reference.
+    #[must_use]
+    pub fn is_env_ref(&self) -> bool {
+        matches!(self, Self::EnvRef { .. })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plain_constructor() {
+        let value = EnvValue::plain("hello");
+        assert!(value.is_plain());
+        assert!(!value.is_env_ref());
+        assert_eq!(value, EnvValue::Plain("hello".to_string()));
+    }
+
+    #[test]
+    fn env_constructor() {
+        let value = EnvValue::env("MY_VAR");
+        assert!(value.is_env_ref());
+        assert!(!value.is_plain());
+        assert_eq!(
+            value,
+            EnvValue::EnvRef {
+                env: "MY_VAR".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn to_native_plain_returns_value_unchanged() {
+        let value = EnvValue::plain("hello world");
+        assert_eq!(value.to_native(HarnessKind::ClaudeCode), "hello world");
+        assert_eq!(value.to_native(HarnessKind::OpenCode), "hello world");
+        assert_eq!(value.to_native(HarnessKind::Goose), "hello world");
+    }
+
+    #[test]
+    fn to_native_claude_code_format() {
+        let value = EnvValue::env("API_KEY");
+        assert_eq!(value.to_native(HarnessKind::ClaudeCode), "${API_KEY}");
+    }
+
+    #[test]
+    fn to_native_opencode_format() {
+        let value = EnvValue::env("API_KEY");
+        assert_eq!(value.to_native(HarnessKind::OpenCode), "{env:API_KEY}");
+    }
+
+    #[test]
+    fn to_native_goose_resolves_env_var() {
+        // SAFETY: Test runs single-threaded; no concurrent access to this env var
+        unsafe { std::env::set_var("TEST_GOOSE_VAR", "resolved_value") };
+        let value = EnvValue::env("TEST_GOOSE_VAR");
+        assert_eq!(value.to_native(HarnessKind::Goose), "resolved_value");
+        unsafe { std::env::remove_var("TEST_GOOSE_VAR") };
+    }
+
+    #[test]
+    fn to_native_goose_returns_empty_for_unset_var() {
+        let value = EnvValue::env("UNLIKELY_VAR_NAME_12345");
+        assert_eq!(value.to_native(HarnessKind::Goose), "");
+    }
+
+    #[test]
+    fn from_native_claude_code_parses_env_ref() {
+        let value = EnvValue::from_native("${MY_VAR}", HarnessKind::ClaudeCode);
+        assert_eq!(value, EnvValue::env("MY_VAR"));
+    }
+
+    #[test]
+    fn from_native_claude_code_plain_for_non_matching() {
+        let value = EnvValue::from_native("plain text", HarnessKind::ClaudeCode);
+        assert_eq!(value, EnvValue::plain("plain text"));
+    }
+
+    #[test]
+    fn from_native_opencode_parses_env_ref() {
+        let value = EnvValue::from_native("{env:MY_VAR}", HarnessKind::OpenCode);
+        assert_eq!(value, EnvValue::env("MY_VAR"));
+    }
+
+    #[test]
+    fn from_native_opencode_plain_for_non_matching() {
+        let value = EnvValue::from_native("plain text", HarnessKind::OpenCode);
+        assert_eq!(value, EnvValue::plain("plain text"));
+    }
+
+    #[test]
+    fn from_native_goose_always_plain() {
+        let value = EnvValue::from_native("${MY_VAR}", HarnessKind::Goose);
+        assert_eq!(value, EnvValue::plain("${MY_VAR}"));
+
+        let value = EnvValue::from_native("{env:MY_VAR}", HarnessKind::Goose);
+        assert_eq!(value, EnvValue::plain("{env:MY_VAR}"));
+    }
+
+    #[test]
+    fn resolve_plain_returns_value() {
+        let value = EnvValue::plain("hello");
+        assert_eq!(value.resolve(), Some("hello".to_string()));
+    }
+
+    #[test]
+    fn resolve_env_ref_returns_value_when_set() {
+        // SAFETY: Test runs single-threaded; no concurrent access to this env var
+        unsafe { std::env::set_var("TEST_RESOLVE_VAR", "test_value") };
+        let value = EnvValue::env("TEST_RESOLVE_VAR");
+        assert_eq!(value.resolve(), Some("test_value".to_string()));
+        unsafe { std::env::remove_var("TEST_RESOLVE_VAR") };
+    }
+
+    #[test]
+    fn resolve_env_ref_returns_none_when_unset() {
+        let value = EnvValue::env("UNLIKELY_VAR_NAME_67890");
+        assert_eq!(value.resolve(), None);
+    }
+
+    #[test]
+    fn serde_plain_string_roundtrip() {
+        let value = EnvValue::plain("hello");
+        let json = serde_json::to_string(&value).unwrap();
+        assert_eq!(json, r#""hello""#);
+        let parsed: EnvValue = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, value);
+    }
+
+    #[test]
+    fn serde_env_ref_roundtrip() {
+        let value = EnvValue::env("MY_VAR");
+        let json = serde_json::to_string(&value).unwrap();
+        assert_eq!(json, r#"{"env":"MY_VAR"}"#);
+        let parsed: EnvValue = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, value);
+    }
+
+    #[test]
+    fn serde_deserialize_plain_from_string() {
+        let parsed: EnvValue = serde_json::from_str(r#""plain text""#).unwrap();
+        assert_eq!(parsed, EnvValue::plain("plain text"));
+    }
+
+    #[test]
+    fn serde_deserialize_env_ref_from_object() {
+        let parsed: EnvValue = serde_json::from_str(r#"{"env":"API_KEY"}"#).unwrap();
+        assert_eq!(parsed, EnvValue::env("API_KEY"));
+    }
+}

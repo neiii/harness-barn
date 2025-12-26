@@ -11,5 +11,6 @@ pub mod types;
 pub use error::{Error, Result};
 pub use harness::Harness;
 pub use types::{
-    ConfigResource, DirectoryResource, DirectoryStructure, FileFormat, HarnessKind, PathType, Scope,
+    ConfigResource, DirectoryResource, DirectoryStructure, EnvValue, FileFormat, HarnessKind,
+    PathType, Scope,
 };
