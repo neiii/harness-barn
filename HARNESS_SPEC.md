@@ -64,6 +64,63 @@ Behavioral instructions/rules files. **Note**: Project rules typically live at p
 | OpenCode | None | Project root | `AGENTS.md` |
 | Goose | `~/.config/goose/` | Project root | `.goosehints`, `AGENTS.md` |
 
+## Skills Support
+
+All three harnesses support skills with the same file format (SKILL.md with YAML frontmatter).
+
+| Harness     | Project Location         | Global Location                  |
+|-------------|--------------------------|----------------------------------|
+| Claude Code | `.claude/skills/`        | `~/.claude/skills/`              |
+| OpenCode    | `.opencode/skill/`       | `~/.config/opencode/skill/`      |
+| Goose       | `.agents/skills/`        | `~/.config/agents/skills/`       |
+
+### Skill File Format
+
+All harnesses use the same format:
+
+```markdown
+---
+name: skill-name
+description: What this skill does and when to use it
+---
+
+# Skill Name
+
+Instructions for the AI agent...
+```
+
+## MCP Capabilities
+
+| Capability | Claude Code | OpenCode | Goose |
+|------------|-------------|----------|-------|
+| stdio      | Yes         | Yes      | Yes   |
+| SSE        | Yes*        | Yes**    | Yes   |
+| HTTP       | Yes         | Yes      | Yes   |
+| OAuth      | Yes         | Yes      | Yes***|
+| Timeout    | Yes****     | Yes (ms) | Yes (s)|
+| Headers    | Yes         | Yes      | Yes   |
+
+*SSE is deprecated in Claude Code; use HTTP instead  
+**OpenCode uses SSE as fallback for StreamableHTTP  
+***Goose OAuth only for streamable_http transport  
+****Claude Code timeout via MCP_TIMEOUT env var (milliseconds)
+
+## Timeout Configuration
+
+| Harness     | Unit         | Config Method                          |
+|-------------|--------------|----------------------------------------|
+| Claude Code | Milliseconds | `MCP_TIMEOUT` and `MCP_TOOL_TIMEOUT` env vars |
+| OpenCode    | Milliseconds | `timeout` field in mcp config          |
+| Goose       | Seconds      | `timeout` field in extension config    |
+
+## OAuth Support
+
+| Harness     | Supported Transports | Features                              |
+|-------------|---------------------|---------------------------------------|
+| Claude Code | HTTP, SSE           | OAuth 2.0, DCR, token refresh         |
+| OpenCode    | remote (HTTP/SSE)   | Auto-discovery, DCR (RFC 7591)        |
+| Goose       | streamable_http     | Device code flow, credential storage  |
+
 ## Integration Checklist
 
 When adding a new harness:
