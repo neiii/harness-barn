@@ -23,7 +23,7 @@ pub use harness::Harness;
 pub use mcp::{
     HttpMcpServer, McpCapabilities, McpServer, OAuthConfig, SseMcpServer, StdioMcpServer,
 };
-pub use skill::{Frontmatter, parse_frontmatter};
+pub use skill::{Frontmatter, Skill, parse_frontmatter, parse_skill};
 pub use types::{
     ConfigResource, DirectoryResource, DirectoryStructure, EnvValue, FileFormat, HarnessKind,
     InstallationStatus, PathType, Scope,
