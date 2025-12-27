@@ -1651,4 +1651,93 @@ mod tests {
         assert!(obj.get("timeout").is_none());
         assert!(obj.get("headers").is_none());
     }
+
+    #[test]
+    fn parse_mcp_config_claude_code() {
+        let harness = Harness::new(HarnessKind::ClaudeCode);
+        let config = serde_json::json!({
+            "mcpServers": {
+                "test-server": {
+                    "command": "node",
+                    "args": ["server.js"]
+                }
+            }
+        });
+
+        let servers = harness.parse_mcp_config(&config).unwrap();
+        assert_eq!(servers.len(), 1);
+        assert!(servers.contains_key("test-server"));
+    }
+
+    #[test]
+    fn parse_mcp_config_opencode() {
+        let harness = Harness::new(HarnessKind::OpenCode);
+        let config = serde_json::json!({
+            "mcp": {
+                "test-server": {
+                    "type": "local",
+                    "command": ["node", "server.js"]
+                }
+            }
+        });
+
+        let servers = harness.parse_mcp_config(&config).unwrap();
+        assert_eq!(servers.len(), 1);
+        assert!(servers.contains_key("test-server"));
+    }
+
+    #[test]
+    fn parse_mcp_config_opencode_includes_disabled() {
+        let harness = Harness::new(HarnessKind::OpenCode);
+        let config = serde_json::json!({
+            "mcp": {
+                "enabled-server": {
+                    "type": "local",
+                    "command": ["node", "enabled.js"],
+                    "enabled": true
+                },
+                "disabled-server": {
+                    "type": "local",
+                    "command": ["node", "disabled.js"],
+                    "enabled": false
+                }
+            }
+        });
+
+        let servers = harness.parse_mcp_config(&config).unwrap();
+        assert_eq!(servers.len(), 2, "should include both enabled and disabled servers");
+        assert!(servers.contains_key("enabled-server"));
+        assert!(servers.contains_key("disabled-server"));
+    }
+
+    #[test]
+    fn parse_mcp_config_goose() {
+        let harness = Harness::new(HarnessKind::Goose);
+        let config = serde_json::json!({
+            "extensions": {
+                "test-server": {
+                    "type": "stdio",
+                    "cmd": "node",
+                    "args": ["server.js"]
+                }
+            }
+        });
+
+        let servers = harness.parse_mcp_config(&config).unwrap();
+        assert_eq!(servers.len(), 1);
+        assert!(servers.contains_key("test-server"));
+    }
+
+    #[test]
+    fn parse_mcp_server_config_error_includes_name() {
+        let harness = Harness::new(HarnessKind::ClaudeCode);
+        let invalid_config = serde_json::json!({
+            "invalid": "config"
+        });
+
+        let result = harness.parse_mcp_server_config("my-server", &invalid_config);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("my-server"), "error should include server name");
+    }
 }
