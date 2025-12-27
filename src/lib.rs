@@ -23,5 +23,5 @@ pub use mcp::{
 };
 pub use types::{
     ConfigResource, DirectoryResource, DirectoryStructure, EnvValue, FileFormat, HarnessKind,
-    PathType, Scope,
+    InstallationStatus, PathType, Scope,
 };

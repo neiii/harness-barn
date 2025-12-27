@@ -1,7 +1,7 @@
 //! Core type definitions for harness path resolution.
 
 use std::fmt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -86,6 +86,112 @@ pub enum Scope {
     Global,
     /// Project-local configuration (e.g., `.claude/` in project root)
     Project(PathBuf),
+}
+
+/// Installation status of a harness on the current system.
+///
+/// Represents the different states a harness can be in, from not installed
+/// to fully configured with both binary and configuration present.
+///
+/// # Extensibility
+///
+/// This enum is marked `#[non_exhaustive]` to allow adding new
+/// status variants in future versions without breaking changes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum InstallationStatus {
+    /// Harness is not installed (no binary or config found).
+    NotInstalled,
+    /// Only configuration directory exists (no binary in PATH).
+    ConfigOnly {
+        /// Path to the configuration directory.
+        config_path: PathBuf,
+    },
+    /// Only the binary exists in PATH (no configuration found).
+    BinaryOnly {
+        /// Path to the binary executable.
+        binary_path: PathBuf,
+    },
+    /// Fully installed with both binary and configuration.
+    FullyInstalled {
+        /// Path to the binary executable.
+        binary_path: PathBuf,
+        /// Path to the configuration directory.
+        config_path: PathBuf,
+    },
+}
+
+impl InstallationStatus {
+    /// Returns `true` if the harness CLI can be invoked.
+    ///
+    /// A harness is runnable if its binary is available in PATH,
+    /// regardless of whether configuration exists.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use get_harness::InstallationStatus;
+    /// use std::path::PathBuf;
+    ///
+    /// let status = InstallationStatus::BinaryOnly {
+    ///     binary_path: PathBuf::from("/usr/bin/claude"),
+    /// };
+    /// assert!(status.is_runnable());
+    ///
+    /// let status = InstallationStatus::NotInstalled;
+    /// assert!(!status.is_runnable());
+    /// ```
+    #[must_use]
+    pub fn is_runnable(&self) -> bool {
+        matches!(self, Self::BinaryOnly { .. } | Self::FullyInstalled { .. })
+    }
+
+    /// Returns the binary path if available.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use get_harness::InstallationStatus;
+    /// use std::path::{Path, PathBuf};
+    ///
+    /// let status = InstallationStatus::FullyInstalled {
+    ///     binary_path: PathBuf::from("/usr/bin/claude"),
+    ///     config_path: PathBuf::from("/home/user/.claude"),
+    /// };
+    /// assert_eq!(status.binary_path(), Some(Path::new("/usr/bin/claude")));
+    /// ```
+    #[must_use]
+    pub fn binary_path(&self) -> Option<&Path> {
+        match self {
+            Self::BinaryOnly { binary_path } | Self::FullyInstalled { binary_path, .. } => {
+                Some(binary_path)
+            }
+            _ => None,
+        }
+    }
+
+    /// Returns the config path if available.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use get_harness::InstallationStatus;
+    /// use std::path::{Path, PathBuf};
+    ///
+    /// let status = InstallationStatus::ConfigOnly {
+    ///     config_path: PathBuf::from("/home/user/.claude"),
+    /// };
+    /// assert_eq!(status.config_path(), Some(Path::new("/home/user/.claude")));
+    /// ```
+    #[must_use]
+    pub fn config_path(&self) -> Option<&Path> {
+        match self {
+            Self::ConfigOnly { config_path } | Self::FullyInstalled { config_path, .. } => {
+                Some(config_path)
+            }
+            _ => None,
+        }
+    }
 }
 
 /// Types of paths a harness may provide.
@@ -565,5 +671,43 @@ mod tests {
         for kind in HarnessKind::ALL {
             assert_eq!(kind.binary_names().len(), 1);
         }
+    }
+
+    #[test]
+    fn installation_status_is_runnable() {
+        assert!(!InstallationStatus::NotInstalled.is_runnable());
+        assert!(
+            !InstallationStatus::ConfigOnly {
+                config_path: PathBuf::from("/config"),
+            }
+            .is_runnable()
+        );
+        assert!(
+            InstallationStatus::BinaryOnly {
+                binary_path: PathBuf::from("/bin"),
+            }
+            .is_runnable()
+        );
+        assert!(
+            InstallationStatus::FullyInstalled {
+                binary_path: PathBuf::from("/bin"),
+                config_path: PathBuf::from("/config"),
+            }
+            .is_runnable()
+        );
+    }
+
+    #[test]
+    fn installation_status_accessors() {
+        let status = InstallationStatus::FullyInstalled {
+            binary_path: PathBuf::from("/bin/claude"),
+            config_path: PathBuf::from("/home/.claude"),
+        };
+        assert_eq!(status.binary_path(), Some(Path::new("/bin/claude")));
+        assert_eq!(status.config_path(), Some(Path::new("/home/.claude")));
+
+        let status = InstallationStatus::NotInstalled;
+        assert_eq!(status.binary_path(), None);
+        assert_eq!(status.config_path(), None);
     }
 }

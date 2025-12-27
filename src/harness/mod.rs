@@ -7,7 +7,8 @@ use serde_json::json;
 use crate::error::{Error, Result};
 use crate::mcp::{McpCapabilities, McpServer};
 use crate::types::{
-    ConfigResource, DirectoryResource, DirectoryStructure, FileFormat, HarnessKind, Scope,
+    ConfigResource, DirectoryResource, DirectoryStructure, FileFormat, HarnessKind,
+    InstallationStatus, Scope,
 };
 
 pub mod claude_code;
@@ -115,6 +116,45 @@ impl Harness {
             HarnessKind::OpenCode => opencode::is_installed(),
             HarnessKind::Goose => goose::is_installed(),
         }
+    }
+
+    /// Returns detailed installation status for this harness.
+    ///
+    /// Checks both binary availability in PATH and config directory existence.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if binary detection fails due to a system error.
+    pub fn installation_status(&self) -> Result<InstallationStatus> {
+        let binary_path = self.find_first_binary()?;
+
+        let config_path = match self.kind {
+            HarnessKind::ClaudeCode => claude_code::global_config_dir().ok(),
+            HarnessKind::OpenCode => opencode::global_config_dir().ok(),
+            HarnessKind::Goose => goose::global_config_dir().ok(),
+        }
+        .filter(|p| p.exists());
+
+        let status = match (binary_path, config_path) {
+            (Some(binary_path), Some(config_path)) => InstallationStatus::FullyInstalled {
+                binary_path,
+                config_path,
+            },
+            (Some(binary_path), None) => InstallationStatus::BinaryOnly { binary_path },
+            (None, Some(config_path)) => InstallationStatus::ConfigOnly { config_path },
+            (None, None) => InstallationStatus::NotInstalled,
+        };
+
+        Ok(status)
+    }
+
+    fn find_first_binary(&self) -> Result<Option<PathBuf>> {
+        for name in self.kind.binary_names() {
+            if let Some(path) = crate::detection::find_binary(name)? {
+                return Ok(Some(path));
+            }
+        }
+        Ok(None)
     }
 
     /// Returns all harnesses that are installed on the current system.
