@@ -291,14 +291,15 @@ fn parse_http_server(obj: &serde_json::Map<String, serde_json::Value>) -> Result
 /// Returns an error if the JSON is malformed.
 #[allow(dead_code)]
 pub(crate) fn parse_mcp_servers(config: &serde_json::Value) -> Result<Vec<(String, McpServer)>> {
+    // Try literal dotted key first (actual AmpCode format), then nested fallback
     let servers_obj = config
-        .get("amp")
-        .and_then(|v| v.get("mcpServers"))
-        .and_then(|v| v.as_object())
-        .ok_or_else(|| Error::UnsupportedMcpConfig {
-            harness: "AMP Code".to_string(),
-            reason: "Config missing 'amp.mcpServers' object".to_string(),
-        })?;
+        .get("amp.mcpServers")
+        .or_else(|| config.get("amp").and_then(|v| v.get("mcpServers")))
+        .and_then(|v| v.as_object());
+
+    let Some(servers_obj) = servers_obj else {
+        return Ok(vec![]);
+    };
 
     let mut result = Vec::new();
     for (name, value) in servers_obj {
@@ -701,17 +702,18 @@ mod tests {
     }
 
     #[test]
-    fn parse_mcp_servers_missing_amp_key_fails() {
+    fn parse_mcp_servers_missing_config_returns_empty() {
         let config = json!({
             "other": "data"
         });
 
         let result = parse_mcp_servers(&config);
-        assert!(result.is_err());
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
     }
 
     #[test]
-    fn parse_mcp_servers_missing_mcp_servers_key_fails() {
+    fn parse_mcp_servers_nested_without_mcp_servers_returns_empty() {
         let config = json!({
             "amp": {
                 "other": "data"
@@ -719,7 +721,26 @@ mod tests {
         });
 
         let result = parse_mcp_servers(&config);
-        assert!(result.is_err());
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+    }
+
+    #[test]
+    fn parse_mcp_servers_dotted_key_format() {
+        let config = json!({
+            "amp.mcpServers": {
+                "test-server": {
+                    "command": "test-cmd",
+                    "args": ["--flag"]
+                }
+            }
+        });
+
+        let result = parse_mcp_servers(&config);
+        assert!(result.is_ok());
+        let servers = result.unwrap();
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].0, "test-server");
     }
 
     #[test]
