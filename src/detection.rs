@@ -24,7 +24,7 @@ use crate::error::{Error, Result};
 /// # Examples
 ///
 /// ```no_run
-/// use get_harness::detection::find_binary;
+/// use harness_locate::detection::find_binary;
 ///
 /// match find_binary("claude") {
 ///     Ok(Some(path)) => println!("Found at: {}", path.display()),

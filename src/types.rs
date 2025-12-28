@@ -54,7 +54,7 @@ impl HarnessKind {
     /// # Examples
     ///
     /// ```
-    /// use get_harness::types::HarnessKind;
+    /// use harness_locate::types::HarnessKind;
     ///
     /// for kind in HarnessKind::ALL {
     ///     println!("{}", kind);
@@ -70,7 +70,7 @@ impl HarnessKind {
     /// # Examples
     ///
     /// ```
-    /// use get_harness::HarnessKind;
+    /// use harness_locate::HarnessKind;
     ///
     /// assert_eq!(HarnessKind::ClaudeCode.binary_names(), &["claude"]);
     /// assert_eq!(HarnessKind::OpenCode.binary_names(), &["opencode"]);
@@ -140,7 +140,7 @@ impl InstallationStatus {
     /// # Examples
     ///
     /// ```
-    /// use get_harness::InstallationStatus;
+    /// use harness_locate::InstallationStatus;
     /// use std::path::PathBuf;
     ///
     /// let status = InstallationStatus::BinaryOnly {
@@ -161,7 +161,7 @@ impl InstallationStatus {
     /// # Examples
     ///
     /// ```
-    /// use get_harness::InstallationStatus;
+    /// use harness_locate::InstallationStatus;
     /// use std::path::{Path, PathBuf};
     ///
     /// let status = InstallationStatus::FullyInstalled {
@@ -185,7 +185,7 @@ impl InstallationStatus {
     /// # Examples
     ///
     /// ```
-    /// use get_harness::InstallationStatus;
+    /// use harness_locate::InstallationStatus;
     /// use std::path::{Path, PathBuf};
     ///
     /// let status = InstallationStatus::ConfigOnly {
@@ -328,7 +328,7 @@ pub struct ConfigResource {
 /// # Examples
 ///
 /// ```
-/// use get_harness::types::{EnvValue, HarnessKind};
+/// use harness_locate::types::{EnvValue, HarnessKind};
 ///
 /// // Create an environment variable reference
 /// let api_key = EnvValue::env("MY_API_KEY");
@@ -357,7 +357,7 @@ impl EnvValue {
     /// # Examples
     ///
     /// ```
-    /// use get_harness::types::EnvValue;
+    /// use harness_locate::types::EnvValue;
     ///
     /// let value = EnvValue::plain("hello");
     /// assert_eq!(value.resolve(), Some("hello".to_string()));
@@ -372,7 +372,7 @@ impl EnvValue {
     /// # Examples
     ///
     /// ```
-    /// use get_harness::types::EnvValue;
+    /// use harness_locate::types::EnvValue;
     ///
     /// let value = EnvValue::env("MY_VAR");
     /// // Resolution depends on whether MY_VAR is set in the environment
@@ -398,7 +398,7 @@ impl EnvValue {
     /// # Examples
     ///
     /// ```
-    /// use get_harness::types::{EnvValue, HarnessKind};
+    /// use harness_locate::types::{EnvValue, HarnessKind};
     ///
     /// let value = EnvValue::env("API_KEY");
     /// assert_eq!(value.to_native(HarnessKind::ClaudeCode), "${API_KEY}");
@@ -436,7 +436,7 @@ impl EnvValue {
     /// # Examples
     ///
     /// ```
-    /// use get_harness::types::{EnvValue, HarnessKind};
+    /// use harness_locate::types::{EnvValue, HarnessKind};
     ///
     /// let value = EnvValue::from_native("${API_KEY}", HarnessKind::ClaudeCode);
     /// assert_eq!(value, EnvValue::env("API_KEY"));
@@ -487,7 +487,7 @@ impl EnvValue {
     /// # Examples
     ///
     /// ```
-    /// use get_harness::types::EnvValue;
+    /// use harness_locate::types::EnvValue;
     ///
     /// let plain = EnvValue::plain("hello");
     /// assert_eq!(plain.resolve(), Some("hello".to_string()));

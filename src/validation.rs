@@ -11,8 +11,8 @@
 //! # Example
 //!
 //! ```
-//! use get_harness::mcp::{McpServer, StdioMcpServer};
-//! use get_harness::validation::{validate_mcp_server, Severity};
+//! use harness_locate::mcp::{McpServer, StdioMcpServer};
+//! use harness_locate::validation::{validate_mcp_server, Severity};
 //!
 //! let server = McpServer::Stdio(StdioMcpServer {
 //!     command: String::new(), // Empty command - will be flagged
@@ -187,8 +187,8 @@ const SUSPICIOUS_ENV_PATTERNS: &[&str] = &[
 /// # Example
 ///
 /// ```
-/// use get_harness::mcp::{McpServer, StdioMcpServer};
-/// use get_harness::validation::validate_mcp_server;
+/// use harness_locate::mcp::{McpServer, StdioMcpServer};
+/// use harness_locate::validation::validate_mcp_server;
 ///
 /// let server = McpServer::Stdio(StdioMcpServer {
 ///     command: "node".to_string(),

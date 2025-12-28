@@ -38,11 +38,11 @@ impl Harness {
     /// # Examples
     ///
     /// ```no_run
-    /// use get_harness::{Harness, HarnessKind};
+    /// use harness_locate::{Harness, HarnessKind};
     ///
     /// let harness = Harness::locate(HarnessKind::ClaudeCode)?;
-    /// println!("Found {} at {:?}", harness.kind(), harness.config(&get_harness::Scope::Global)?);
-    /// # Ok::<(), get_harness::Error>(())
+    /// println!("Found {} at {:?}", harness.kind(), harness.config(&harness_locate::Scope::Global)?);
+    /// # Ok::<(), harness_locate::Error>(())
     /// ```
     pub fn locate(kind: HarnessKind) -> Result<Self> {
         let is_installed = match kind {
@@ -63,7 +63,7 @@ impl Harness {
     /// # Examples
     ///
     /// ```
-    /// use get_harness::{Harness, HarnessKind};
+    /// use harness_locate::{Harness, HarnessKind};
     ///
     /// let harness = Harness::new(HarnessKind::Goose);
     /// assert_eq!(harness.kind(), HarnessKind::Goose);
@@ -84,7 +84,7 @@ impl Harness {
     /// # Examples
     ///
     /// ```
-    /// use get_harness::{Harness, HarnessKind};
+    /// use harness_locate::{Harness, HarnessKind};
     ///
     /// // Create without checking installation
     /// let harness = Harness::new(HarnessKind::OpenCode);
@@ -103,7 +103,7 @@ impl Harness {
     /// # Examples
     ///
     /// ```
-    /// use get_harness::{Harness, HarnessKind};
+    /// use harness_locate::{Harness, HarnessKind};
     ///
     /// let harness = Harness::new(HarnessKind::Goose);
     /// if harness.is_installed() {
@@ -168,12 +168,12 @@ impl Harness {
     /// # Examples
     ///
     /// ```no_run
-    /// use get_harness::Harness;
+    /// use harness_locate::Harness;
     ///
     /// for harness in Harness::installed()? {
     ///     println!("{} is installed", harness.kind());
     /// }
-    /// # Ok::<(), get_harness::Error>(())
+    /// # Ok::<(), harness_locate::Error>(())
     /// ```
     pub fn installed() -> Result<Vec<Harness>> {
         let mut result = Vec::new();
@@ -200,13 +200,13 @@ impl Harness {
     /// # Examples
     ///
     /// ```no_run
-    /// use get_harness::{Harness, HarnessKind, Scope};
+    /// use harness_locate::{Harness, HarnessKind, Scope};
     ///
     /// let harness = Harness::new(HarnessKind::ClaudeCode);
     /// if let Some(skills) = harness.skills(&Scope::Global)? {
     ///     println!("Skills directory: {}", skills.path.display());
     /// }
-    /// # Ok::<(), get_harness::Error>(())
+    /// # Ok::<(), harness_locate::Error>(())
     /// ```
     pub fn skills(&self, scope: &Scope) -> Result<Option<DirectoryResource>> {
         match self.kind {
@@ -261,13 +261,13 @@ impl Harness {
     /// # Examples
     ///
     /// ```no_run
-    /// use get_harness::{Harness, HarnessKind, Scope};
+    /// use harness_locate::{Harness, HarnessKind, Scope};
     ///
     /// let harness = Harness::new(HarnessKind::OpenCode);
     /// if let Some(commands) = harness.commands(&Scope::Global)? {
     ///     println!("Commands at: {}", commands.path.display());
     /// }
-    /// # Ok::<(), get_harness::Error>(())
+    /// # Ok::<(), harness_locate::Error>(())
     /// ```
     pub fn commands(&self, scope: &Scope) -> Result<Option<DirectoryResource>> {
         let path = match self.kind {
@@ -296,13 +296,13 @@ impl Harness {
     /// # Examples
     ///
     /// ```no_run
-    /// use get_harness::{Harness, HarnessKind, Scope};
+    /// use harness_locate::{Harness, HarnessKind, Scope};
     ///
     /// let harness = Harness::new(HarnessKind::OpenCode);
     /// if let Some(plugins) = harness.plugins(&Scope::Global)? {
     ///     println!("Plugins at: {}", plugins.path.display());
     /// }
-    /// # Ok::<(), get_harness::Error>(())
+    /// # Ok::<(), harness_locate::Error>(())
     /// ```
     pub fn plugins(&self, scope: &Scope) -> Result<Option<DirectoryResource>> {
         match self.kind {
@@ -332,13 +332,13 @@ impl Harness {
     /// # Examples
     ///
     /// ```no_run
-    /// use get_harness::{Harness, HarnessKind, Scope};
+    /// use harness_locate::{Harness, HarnessKind, Scope};
     ///
     /// let harness = Harness::new(HarnessKind::OpenCode);
     /// if let Some(agents) = harness.agents(&Scope::Global)? {
     ///     println!("Agents at: {}", agents.path.display());
     /// }
-    /// # Ok::<(), get_harness::Error>(())
+    /// # Ok::<(), harness_locate::Error>(())
     /// ```
     pub fn agents(&self, scope: &Scope) -> Result<Option<DirectoryResource>> {
         match self.kind {
@@ -366,7 +366,7 @@ impl Harness {
     /// # Examples
     ///
     /// ```no_run
-    /// use get_harness::{Harness, HarnessKind, Scope};
+    /// use harness_locate::{Harness, HarnessKind, Scope};
     /// use std::path::PathBuf;
     ///
     /// let harness = Harness::new(HarnessKind::ClaudeCode);
@@ -376,7 +376,7 @@ impl Harness {
     ///
     /// // Project config
     /// let project = harness.config(&Scope::Project(PathBuf::from("/my/project")))?;
-    /// # Ok::<(), get_harness::Error>(())
+    /// # Ok::<(), harness_locate::Error>(())
     /// ```
     pub fn config(&self, scope: &Scope) -> Result<PathBuf> {
         match self.kind {
@@ -395,14 +395,14 @@ impl Harness {
     /// # Examples
     ///
     /// ```no_run
-    /// use get_harness::{Harness, HarnessKind, Scope};
+    /// use harness_locate::{Harness, HarnessKind, Scope};
     ///
     /// let harness = Harness::new(HarnessKind::ClaudeCode);
     /// if let Some(mcp) = harness.mcp(&Scope::Global)? {
     ///     println!("MCP config: {}", mcp.file.display());
     ///     println!("Key path: {}", mcp.key_path);
     /// }
-    /// # Ok::<(), get_harness::Error>(())
+    /// # Ok::<(), harness_locate::Error>(())
     /// ```
     pub fn mcp(&self, scope: &Scope) -> Result<Option<ConfigResource>> {
         let (file, key_path, format) = match self.kind {
@@ -446,7 +446,7 @@ impl Harness {
     /// # Example
     ///
     /// ```
-    /// use get_harness::{Harness, HarnessKind};
+    /// use harness_locate::{Harness, HarnessKind};
     ///
     /// let harness = Harness::new(HarnessKind::OpenCode);
     /// let caps = harness.mcp_capabilities();
@@ -470,8 +470,8 @@ impl Harness {
     ///
     /// ```
     /// use std::collections::HashMap;
-    /// use get_harness::{Harness, HarnessKind};
-    /// use get_harness::mcp::{McpServer, HttpMcpServer, OAuthConfig};
+    /// use harness_locate::{Harness, HarnessKind};
+    /// use harness_locate::mcp::{McpServer, HttpMcpServer, OAuthConfig};
     ///
     /// let server = McpServer::Http(HttpMcpServer {
     ///     url: "https://api.example.com/mcp".to_string(),
@@ -561,14 +561,14 @@ impl Harness {
     /// # Examples
     ///
     /// ```no_run
-    /// use get_harness::{Harness, HarnessKind, Scope};
+    /// use harness_locate::{Harness, HarnessKind, Scope};
     /// use std::path::PathBuf;
     ///
     /// let harness = Harness::new(HarnessKind::ClaudeCode);
     /// if let Some(rules) = harness.rules(&Scope::Project(PathBuf::from(".")))? {
     ///     println!("Rules directory: {}", rules.path.display());
     /// }
-    /// # Ok::<(), get_harness::Error>(())
+    /// # Ok::<(), harness_locate::Error>(())
     /// ```
     pub fn rules(&self, scope: &Scope) -> Result<Option<DirectoryResource>> {
         let path = match self.kind {
@@ -604,8 +604,8 @@ impl Harness {
     /// # Example
     ///
     /// ```
-    /// use get_harness::{Harness, HarnessKind};
-    /// use get_harness::mcp::{McpServer, StdioMcpServer};
+    /// use harness_locate::{Harness, HarnessKind};
+    /// use harness_locate::mcp::{McpServer, StdioMcpServer};
     ///
     /// let harness = Harness::new(HarnessKind::ClaudeCode);
     /// let server = McpServer::Stdio(StdioMcpServer {
@@ -891,7 +891,7 @@ impl Harness {
     ///
     /// ```
     /// use std::collections::HashMap;
-    /// use get_harness::{Harness, HarnessKind};
+    /// use harness_locate::{Harness, HarnessKind};
     /// use serde_json::json;
     ///
     /// let harness = Harness::new(HarnessKind::ClaudeCode);
@@ -930,7 +930,7 @@ impl Harness {
     /// # Example
     ///
     /// ```
-    /// use get_harness::{Harness, HarnessKind};
+    /// use harness_locate::{Harness, HarnessKind};
     /// use serde_json::json;
     ///
     /// let harness = Harness::new(HarnessKind::ClaudeCode);

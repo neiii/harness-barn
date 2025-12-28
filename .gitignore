@@ -3,6 +3,7 @@
 .opencode
 AGENTS.md
 AGENTIC_WORKFLOW.md
+HARNESS_SPEC.md
 
 # Beads artifacts are local-only working documents
 .beads/artifacts/

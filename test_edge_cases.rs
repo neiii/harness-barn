@@ -1,4 +1,4 @@
-use get_harness::types::{EnvValue, HarnessKind};
+use harness_locate::types::{EnvValue, HarnessKind};
 
 fn main() {
     // Test edge cases

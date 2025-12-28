@@ -1,4 +1,4 @@
-# get-harness
+# harness-locate
 
 Cross-platform harness path discovery for AI coding CLI tools.
 
@@ -13,7 +13,7 @@ Cross-platform harness path discovery for AI coding CLI tools.
 
 ```toml
 [dependencies]
-get-harness = "0.1"
+harness-locate = "0.1"
 ```
 
 ## Quick Start
@@ -21,31 +21,31 @@ get-harness = "0.1"
 ### Detect Installed Harnesses
 
 ```rust,no_run
-use get_harness::{Harness, HarnessKind};
+use harness_locate::{Harness, HarnessKind};
 
 // Check all installed harnesses
 for harness in Harness::installed()? {
     println!("{} is installed", harness.kind());
 }
-# Ok::<(), get_harness::Error>(())
+# Ok::<(), harness_locate::Error>(())
 ```
 
 ### Get Configuration Paths
 
 ```rust,no_run
-use get_harness::{Harness, HarnessKind, Scope};
+use harness_locate::{Harness, HarnessKind, Scope};
 
 let harness = Harness::locate(HarnessKind::ClaudeCode)?;
 let config_dir = harness.config(&Scope::Global)?;
 println!("Config at: {}", config_dir.display());
-# Ok::<(), get_harness::Error>(())
+# Ok::<(), harness_locate::Error>(())
 ```
 
 ### MCP Server Configuration
 
 ```rust
-use get_harness::{Harness, HarnessKind};
-use get_harness::mcp::{McpServer, StdioMcpServer};
+use harness_locate::{Harness, HarnessKind};
+use harness_locate::mcp::{McpServer, StdioMcpServer};
 
 let server = McpServer::Stdio(StdioMcpServer {
     command: "npx".to_string(),

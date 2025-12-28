@@ -45,7 +45,7 @@ pub enum McpServer {
 /// # Example
 ///
 /// ```
-/// use get_harness::mcp::StdioMcpServer;
+/// use harness_locate::mcp::StdioMcpServer;
 ///
 /// let server = StdioMcpServer {
 ///     command: "npx".to_string(),
@@ -95,7 +95,7 @@ pub struct StdioMcpServer {
 /// # Example
 ///
 /// ```
-/// use get_harness::mcp::SseMcpServer;
+/// use harness_locate::mcp::SseMcpServer;
 ///
 /// let server = SseMcpServer {
 ///     url: "https://api.example.com/mcp/sse".to_string(),
@@ -137,8 +137,8 @@ pub struct SseMcpServer {
 /// # Example
 ///
 /// ```
-/// use get_harness::mcp::{HttpMcpServer, OAuthConfig};
-/// use get_harness::types::EnvValue;
+/// use harness_locate::mcp::{HttpMcpServer, OAuthConfig};
+/// use harness_locate::types::EnvValue;
 ///
 /// let server = HttpMcpServer {
 ///     url: "https://api.example.com/mcp".to_string(),
@@ -218,8 +218,8 @@ pub struct OAuthConfig {
 /// # Example
 ///
 /// ```
-/// use get_harness::mcp::McpCapabilities;
-/// use get_harness::types::HarnessKind;
+/// use harness_locate::mcp::McpCapabilities;
+/// use harness_locate::types::HarnessKind;
 ///
 /// let caps = McpCapabilities::for_kind(HarnessKind::OpenCode);
 /// assert!(caps.stdio);
@@ -259,8 +259,8 @@ impl McpCapabilities {
     /// # Example
     ///
     /// ```
-    /// use get_harness::mcp::McpCapabilities;
-    /// use get_harness::types::HarnessKind;
+    /// use harness_locate::mcp::McpCapabilities;
+    /// use harness_locate::types::HarnessKind;
     ///
     /// let caps = McpCapabilities::for_kind(HarnessKind::ClaudeCode);
     /// assert!(caps.stdio);
