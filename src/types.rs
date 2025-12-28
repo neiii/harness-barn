@@ -415,7 +415,7 @@ impl EnvValue {
         match self {
             Self::Plain(s) => s.clone(),
             Self::EnvRef { env } => match kind {
-                HarnessKind::ClaudeCode => format!("${{{env}}}"),
+                HarnessKind::ClaudeCode | HarnessKind::AmpCode => format!("${{{env}}}"),
                 HarnessKind::OpenCode => format!("{{env:{env}}}"),
                 HarnessKind::Goose => {
                     // Goose resolves env vars at runtime; return resolved value
@@ -456,7 +456,7 @@ impl EnvValue {
     #[must_use]
     pub fn from_native(s: &str, kind: HarnessKind) -> Self {
         match kind {
-            HarnessKind::ClaudeCode => {
+            HarnessKind::ClaudeCode | HarnessKind::AmpCode => {
                 // Parse ${VAR} pattern
                 if let Some(var) = s.strip_prefix("${").and_then(|s| s.strip_suffix('}')) {
                     Self::EnvRef {

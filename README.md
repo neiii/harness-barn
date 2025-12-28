@@ -8,7 +8,7 @@ Cross-platform harness path discovery for AI coding CLI tools.
 
 ## Features
 
-- Detect installed AI coding assistants (Claude Code, OpenCode, Goose)
+- Detect installed AI coding assistants (Claude Code, OpenCode, Goose, AMP Code)
 - Resolve configuration paths (global and project-scoped)
 - Unified MCP server configuration types
 - Cross-platform support (macOS, Linux, Windows)
@@ -73,7 +73,8 @@ if harness.supports_mcp_server(&server) {
 |---------|--------|----------|-----|-------|
 | Claude Code | Yes | Yes | Yes | Yes |
 | OpenCode | Yes | Yes | Yes | Yes |
-| Goose | No | No | Yes | Yes |
+| Goose | Yes | No | Yes | Yes |
+| AMP Code | Yes | Yes | Yes | Yes |
 
 ## Resource Types
 
