@@ -17,7 +17,7 @@ Cross-platform harness path discovery for AI coding CLI tools.
 
 ```toml
 [dependencies]
-harness-locate = "0.1"
+harness-locate = "0.2"
 ```
 
 ## Quick Start
