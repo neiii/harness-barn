@@ -982,7 +982,7 @@ impl Harness {
             HarnessKind::ClaudeCode => claude_code::parse_mcp_server(value),
             HarnessKind::OpenCode => opencode::parse_mcp_server(value),
             HarnessKind::Goose => goose::parse_mcp_server(value),
-            HarnessKind::AmpCode => amp_code::parse_mcp_server(value),
+            HarnessKind::AmpCode => amp_code::parse_mcp_server(name, value),
         };
 
         result.map_err(|e| match e {
