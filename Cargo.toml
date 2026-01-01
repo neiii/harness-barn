@@ -5,7 +5,7 @@ members = ["crates/*"]
 [workspace.package]
 edition = "2024"
 license = "MIT"
-repository = "https://github.com/neiii/harness-locate"
+repository = "https://github.com/neiii/harness-barn"
 
 [workspace.dependencies]
 # Shared dependencies
