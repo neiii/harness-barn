@@ -50,6 +50,14 @@ pub struct PluginDescriptor {
     /// Agents contained in this plugin.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub agents: Vec<crate::component::AgentDescriptor>,
+
+    /// Hooks configuration from hooks.json.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hooks: Option<crate::component::HooksConfig>,
+
+    /// MCP server descriptors from .mcp.json.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mcp_servers: Vec<crate::component::McpDescriptor>,
 }
 
 /// Skill metadata descriptor.
@@ -130,6 +138,8 @@ mod tests {
             }],
             commands: vec![],
             agents: vec![],
+            hooks: None,
+            mcp_servers: vec![],
         };
         let json = serde_json::to_string(&plugin).unwrap();
         let parsed: PluginDescriptor = serde_json::from_str(&json).unwrap();
@@ -144,9 +154,26 @@ mod tests {
             skills: vec![],
             commands: vec![],
             agents: vec![],
+            hooks: None,
+            mcp_servers: vec![],
         };
         let json = serde_json::to_string(&plugin).unwrap();
-        // Optional fields should be omitted
+        let parsed: PluginDescriptor = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, plugin);
+    }
+
+    #[test]
+    fn plugin_descriptor_serde_omits_optional_fields() {
+        let plugin = PluginDescriptor {
+            name: "minimal".to_string(),
+            description: None,
+            skills: vec![],
+            commands: vec![],
+            agents: vec![],
+            hooks: None,
+            mcp_servers: vec![],
+        };
+        let json = serde_json::to_string(&plugin).unwrap();
         assert_eq!(json, r#"{"name":"minimal"}"#);
         let parsed: PluginDescriptor = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed, plugin);

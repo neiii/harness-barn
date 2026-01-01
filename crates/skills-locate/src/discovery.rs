@@ -1,6 +1,9 @@
 //! Plugin discovery from GitHub repositories.
 
-use crate::component::{parse_agent_descriptor, parse_command_descriptor, parse_skill_descriptor};
+use crate::component::{
+    parse_agent_descriptor, parse_command_descriptor, parse_hooks_json, parse_mcp_json,
+    parse_skill_descriptor,
+};
 use crate::error::{Error, Result};
 use crate::fetch::{extract_file, fetch_bytes, list_files};
 use crate::github::GitHubRef;
@@ -127,12 +130,25 @@ fn discover_single_plugin(
         parse_agent_descriptor(content).ok()
     });
 
+    let hooks_path = format!("{prefix}{plugin_path}/.claude-plugin/hooks.json");
+    let hooks = extract_file(archive, &hooks_path)
+        .ok()
+        .and_then(|content| parse_hooks_json(&content).ok());
+
+    let mcp_path = format!("{prefix}{plugin_path}/.claude-plugin/.mcp.json");
+    let mcp_servers = extract_file(archive, &mcp_path)
+        .ok()
+        .and_then(|content| parse_mcp_json(&content).ok())
+        .unwrap_or_default();
+
     Ok(PluginDescriptor {
         name: plugin_json.name,
         description: plugin_json.description,
         skills,
         commands,
         agents,
+        hooks,
+        mcp_servers,
     })
 }
 
