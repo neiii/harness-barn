@@ -13,6 +13,7 @@ pub enum PluginSource {
     /// GitHub repository reference.
     GitHub {
         /// GitHub URL or owner/repo shorthand.
+        #[serde(alias = "repo")]
         github: String,
     },
     /// Direct URL to plugin.
@@ -41,6 +42,14 @@ pub struct PluginDescriptor {
     /// Skills contained in this plugin.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub skills: Vec<SkillDescriptor>,
+
+    /// Commands contained in this plugin.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub commands: Vec<crate::component::CommandDescriptor>,
+
+    /// Agents contained in this plugin.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub agents: Vec<crate::component::AgentDescriptor>,
 }
 
 /// Skill metadata descriptor.
@@ -78,6 +87,18 @@ mod tests {
     }
 
     #[test]
+    fn plugin_source_github_deserializes_from_repo_alias() {
+        let json = r#"{"repo":"owner/repo"}"#;
+        let parsed: PluginSource = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            parsed,
+            PluginSource::GitHub {
+                github: "owner/repo".to_string()
+            }
+        );
+    }
+
+    #[test]
     fn plugin_source_url_serde_roundtrip() {
         let source = PluginSource::Url {
             url: "https://example.com/plugin".to_string(),
@@ -107,6 +128,8 @@ mod tests {
                 description: Some("A test skill".to_string()),
                 triggers: vec!["/test".to_string()],
             }],
+            commands: vec![],
+            agents: vec![],
         };
         let json = serde_json::to_string(&plugin).unwrap();
         let parsed: PluginDescriptor = serde_json::from_str(&json).unwrap();
@@ -119,6 +142,8 @@ mod tests {
             name: "minimal".to_string(),
             description: None,
             skills: vec![],
+            commands: vec![],
+            agents: vec![],
         };
         let json = serde_json::to_string(&plugin).unwrap();
         // Optional fields should be omitted

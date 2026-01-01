@@ -1,20 +1,11 @@
 //! Plugin discovery from GitHub repositories.
 
-use crate::component::parse_skill_descriptor;
+use crate::component::{parse_agent_descriptor, parse_command_descriptor, parse_skill_descriptor};
 use crate::error::{Error, Result};
 use crate::fetch::{extract_file, fetch_bytes, list_files};
 use crate::github::GitHubRef;
+use crate::marketplace::Marketplace;
 use crate::types::{PluginDescriptor, PluginSource};
-
-#[derive(Debug, Clone, serde::Deserialize)]
-struct Marketplace {
-    plugins: Vec<MarketplaceEntry>,
-}
-
-#[derive(Debug, Clone, serde::Deserialize)]
-struct MarketplaceEntry {
-    source: String,
-}
 
 #[derive(Debug, Clone, serde::Deserialize)]
 struct PluginJson {
@@ -36,7 +27,8 @@ pub fn discover_plugins(repo_url: &str) -> Result<Vec<PluginDescriptor>> {
     let prefix = extract_archive_prefix(&archive_bytes)?;
 
     for entry in marketplace.plugins {
-        let plugin_path = resolve_plugin_path(&entry.source);
+        let source_str = extract_source_path(&entry.source);
+        let plugin_path = resolve_plugin_path(&source_str);
 
         if let Ok(plugin) = discover_single_plugin(&archive_bytes, &prefix, &plugin_path) {
             plugins.push(plugin);
@@ -70,8 +62,42 @@ fn extract_archive_prefix(archive: &[u8]) -> Result<String> {
     Ok(String::new())
 }
 
+fn extract_source_path(source: &PluginSource) -> String {
+    match source {
+        PluginSource::Relative(path) => path.clone(),
+        PluginSource::GitHub { github } => github.clone(),
+        PluginSource::Url { url } => url.clone(),
+    }
+}
+
 fn resolve_plugin_path(source: &str) -> String {
     source.strip_prefix("./").unwrap_or(source).to_string()
+}
+
+fn scan_components<T, F>(
+    archive: &[u8],
+    plugin_prefix: &str,
+    subdir: &str,
+    suffix: &str,
+    parser: F,
+) -> Vec<T>
+where
+    F: Fn(&str) -> Option<T>,
+{
+    let dir_prefix = format!("{plugin_prefix}{subdir}");
+    let Ok(files) = list_files(archive, suffix) else {
+        return Vec::new();
+    };
+
+    files
+        .into_iter()
+        .filter(|path| path.starts_with(&dir_prefix))
+        .filter_map(|path| {
+            extract_file(archive, &path)
+                .ok()
+                .and_then(|content| parser(&content))
+        })
+        .collect()
 }
 
 fn discover_single_plugin(
@@ -87,23 +113,26 @@ fn discover_single_plugin(
 
     let plugin_json: PluginJson = serde_json::from_str(&plugin_content)?;
 
-    let skills_prefix = format!("{prefix}{plugin_path}/skills/");
-    let skill_files = list_files(archive, "SKILL.md")?;
+    let plugin_prefix = format!("{prefix}{plugin_path}/");
 
-    let mut skills = Vec::new();
-    for skill_path in skill_files {
-        if skill_path.starts_with(&skills_prefix)
-            && let Ok(skill_content) = extract_file(archive, &skill_path)
-            && let Ok(skill) = parse_skill_descriptor(&skill_content)
-        {
-            skills.push(skill);
-        }
-    }
+    let skills = scan_components(archive, &plugin_prefix, "skills/", "SKILL.md", |content| {
+        parse_skill_descriptor(content).ok()
+    });
+
+    let commands = scan_components(archive, &plugin_prefix, "commands/", ".md", |content| {
+        parse_command_descriptor(content, "command").ok()
+    });
+
+    let agents = scan_components(archive, &plugin_prefix, "agents/", ".md", |content| {
+        parse_agent_descriptor(content).ok()
+    });
 
     Ok(PluginDescriptor {
         name: plugin_json.name,
         description: plugin_json.description,
         skills,
+        commands,
+        agents,
     })
 }
 
