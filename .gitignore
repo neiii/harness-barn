@@ -1,6 +1,7 @@
 /target
 /docs
 .opencode
+.sisyphus
 AGENTS.md
 AGENTIC_WORKFLOW.md
 HARNESS_SPEC.md

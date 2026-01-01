@@ -102,6 +102,8 @@ pub enum Scope {
     Global,
     /// Project-local configuration (e.g., `.claude/` in project root)
     Project(PathBuf),
+    /// Custom path for profile-scoped resources (inherits harness directory structure)
+    Custom(PathBuf),
 }
 
 /// Installation status of a harness on the current system.
@@ -415,12 +417,9 @@ impl EnvValue {
         match self {
             Self::Plain(s) => s.clone(),
             Self::EnvRef { env } => match kind {
-                HarnessKind::ClaudeCode => format!("${{{env}}}"),
+                HarnessKind::ClaudeCode | HarnessKind::AmpCode => format!("${{{env}}}"),
                 HarnessKind::OpenCode => format!("{{env:{env}}}"),
-                HarnessKind::Goose => {
-                    // Goose resolves env vars at runtime; return resolved value
-                    std::env::var(env).unwrap_or_default()
-                }
+                HarnessKind::Goose => std::env::var(env).unwrap_or_default(),
             },
         }
     }
@@ -456,8 +455,7 @@ impl EnvValue {
     #[must_use]
     pub fn from_native(s: &str, kind: HarnessKind) -> Self {
         match kind {
-            HarnessKind::ClaudeCode => {
-                // Parse ${VAR} pattern
+            HarnessKind::ClaudeCode | HarnessKind::AmpCode => {
                 if let Some(var) = s.strip_prefix("${").and_then(|s| s.strip_suffix('}')) {
                     Self::EnvRef {
                         env: var.to_string(),
@@ -692,25 +690,19 @@ mod tests {
     #[test]
     fn installation_status_is_runnable() {
         assert!(!InstallationStatus::NotInstalled.is_runnable());
-        assert!(
-            !InstallationStatus::ConfigOnly {
-                config_path: PathBuf::from("/config"),
-            }
-            .is_runnable()
-        );
-        assert!(
-            InstallationStatus::BinaryOnly {
-                binary_path: PathBuf::from("/bin"),
-            }
-            .is_runnable()
-        );
-        assert!(
-            InstallationStatus::FullyInstalled {
-                binary_path: PathBuf::from("/bin"),
-                config_path: PathBuf::from("/config"),
-            }
-            .is_runnable()
-        );
+        assert!(!InstallationStatus::ConfigOnly {
+            config_path: PathBuf::from("/config"),
+        }
+        .is_runnable());
+        assert!(InstallationStatus::BinaryOnly {
+            binary_path: PathBuf::from("/bin"),
+        }
+        .is_runnable());
+        assert!(InstallationStatus::FullyInstalled {
+            binary_path: PathBuf::from("/bin"),
+            config_path: PathBuf::from("/config"),
+        }
+        .is_runnable());
     }
 
     #[test]

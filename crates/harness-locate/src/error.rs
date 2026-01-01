@@ -39,6 +39,10 @@ pub enum Error {
     #[error("binary detection error: {0}")]
     BinaryDetection(String),
 
+    /// The requested scope is not supported by this harness.
+    #[error("{harness} does not support {scope} scope")]
+    UnsupportedScope { harness: String, scope: String },
+
     /// YAML parsing failed.
     #[error("YAML parse error: {0}")]
     YamlParse(#[from] serde_yaml::Error),

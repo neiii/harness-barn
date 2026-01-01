@@ -1,8 +1,10 @@
-//! Claude Code harness implementation.
+//! AMP Code harness implementation.
 //!
-//! Claude Code stores its configuration in:
-//! - **Global**: `$CLAUDE_CONFIG_DIR` or `~/.claude/`
-//! - **Project**: `.claude/` in project root
+//! AMP Code stores its configuration in:
+//! - **Global**: `~/.config/amp/`
+//! - **Project**: Not supported (AMP has no project-scoped config directory)
+//!
+//! Note: Skills are shared with Goose at `~/.config/agents/skills/`.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -12,221 +14,161 @@ use crate::mcp::{HttpMcpServer, McpServer, SseMcpServer, StdioMcpServer};
 use crate::platform;
 use crate::types::{EnvValue, HarnessKind, Scope};
 
-/// Environment variable for Claude Code config directory override.
-const CLAUDE_CONFIG_DIR_ENV: &str = "CLAUDE_CONFIG_DIR";
-
-/// Returns the global Claude Code configuration directory.
+/// Returns the global AMP Code configuration directory.
 ///
-/// Checks `CLAUDE_CONFIG_DIR` environment variable first, then falls back
-/// to `~/.claude/`.
+/// Returns `~/.config/amp/`.
 ///
 /// # Errors
 ///
-/// Returns an error if the home directory cannot be determined and
-/// no environment variable is set.
+/// Returns an error if the home directory cannot be determined.
 pub fn global_config_dir() -> Result<PathBuf> {
-    // Check environment variable first
-    if let Ok(dir) = std::env::var(CLAUDE_CONFIG_DIR_ENV) {
-        let path = PathBuf::from(dir);
-        if path.is_absolute() {
-            return Ok(path);
-        }
-    }
-
-    // Fall back to ~/.claude/
-    Ok(platform::home_dir()?.join(".claude"))
-}
-
-/// Returns the project-local Claude Code configuration directory.
-///
-/// # Arguments
-///
-/// * `project_root` - Path to the project root directory
-#[must_use]
-pub fn project_config_dir(project_root: &std::path::Path) -> PathBuf {
-    project_root.join(".claude")
-}
-
-/// Returns the commands directory for the given scope.
-///
-/// - **Global**: `~/.claude/commands/`
-/// - **Project**: `.claude/commands/`
-pub fn commands_dir(scope: &Scope) -> Result<PathBuf> {
-    match scope {
-        Scope::Global => Ok(global_config_dir()?.join("commands")),
-        Scope::Project(root) => Ok(project_config_dir(root).join("commands")),
-    }
+    Ok(platform::config_dir()?.join("amp"))
 }
 
 /// Returns the config directory for the given scope.
 ///
-/// This is the base configuration directory.
+/// - **Global**: `~/.config/amp/`
+/// - **Project**: Returns `UnsupportedScope` error (AMP has no project config)
+///
+/// # Errors
+///
+/// Returns `Error::UnsupportedScope` for project scope.
 pub fn config_dir(scope: &Scope) -> Result<PathBuf> {
     match scope {
         Scope::Global => global_config_dir(),
-        Scope::Project(root) => Ok(project_config_dir(root)),
+        Scope::Project(_) => Err(Error::UnsupportedScope {
+            harness: "AMP Code".to_string(),
+            scope: "project".to_string(),
+        }),
+        Scope::Custom(path) => Ok(path.clone()),
+    }
+}
+
+/// Returns the commands directory for the given scope.
+///
+/// - **Global**: `~/.config/amp/commands/`
+/// - **Project**: `.agents/commands/`
+pub fn commands_dir(scope: &Scope) -> Result<PathBuf> {
+    match scope {
+        Scope::Global => Ok(global_config_dir()?.join("commands")),
+        Scope::Project(root) => Ok(root.join(".agents").join("commands")),
+        Scope::Custom(path) => Ok(path.join("commands")),
     }
 }
 
 /// Returns the MCP configuration directory for the given scope.
 ///
-/// Claude Code stores MCP configuration in the base config directory
-/// (settings files like `.mcp.json`).
+/// AMP stores MCP configuration in `settings.json` within the config directory.
+///
+/// - **Global**: `~/.config/amp/`
+/// - **Project**: Returns `UnsupportedScope` error
+///
+/// # Errors
+///
+/// Returns `Error::UnsupportedScope` for project scope.
 pub fn mcp_dir(scope: &Scope) -> Result<PathBuf> {
     config_dir(scope)
 }
 
 /// Returns the skills directory for the given scope.
 ///
-/// Claude Code stores skills in nested directories with `SKILL.md` files:
-/// - **Global**: `~/.claude/skills/`
-/// - **Project**: `.claude/skills/`
+/// AMP shares the skills directory with Goose:
+/// - **Global**: `~/.config/agents/skills/`
+/// - **Project**: `.agents/skills/`
 #[must_use]
 pub fn skills_dir(scope: &Scope) -> Option<PathBuf> {
     match scope {
-        Scope::Global => global_config_dir().ok().map(|p| p.join("skills")),
-        Scope::Project(root) => Some(project_config_dir(root).join("skills")),
+        Scope::Global => platform::config_dir()
+            .ok()
+            .map(|p| p.join("agents").join("skills")),
+        Scope::Project(root) => Some(root.join(".agents").join("skills")),
+        Scope::Custom(path) => Some(path.join("skills")),
     }
 }
 
 /// Returns the rules directory for the given scope.
 ///
-/// Claude Code stores rules files (`CLAUDE.md`, `CLAUDE.local.md`) at:
-/// - **Global**: `~/.claude/` (supports global `CLAUDE.md`)
-/// - **Project**: Project root directory (not `.claude/`)
+/// AMP stores rules files (`AGENTS.md`) at:
+/// - **Global**: `~/.config/amp/`
+/// - **Project**: Project root directory
 #[must_use]
 pub fn rules_dir(scope: &Scope) -> Option<PathBuf> {
     match scope {
         Scope::Global => global_config_dir().ok(),
         Scope::Project(root) => Some(root.clone()),
+        Scope::Custom(path) => Some(path.clone()),
     }
 }
 
-/// Checks if Claude Code is installed on this system.
+/// Checks if AMP Code is installed on this system.
 ///
-/// Currently checks if the global config directory exists.
+/// Checks if the `amp` binary is available in PATH.
 pub fn is_installed() -> bool {
-    global_config_dir().map(|p| p.exists()).unwrap_or(false)
+    which::which("amp").is_ok()
 }
 
-/// Parses a single MCP server from Claude Code's native JSON format.
+/// Parses a single MCP server from AMP's native JSON format.
 ///
-/// # Arguments
-/// * `value` - The JSON value representing the server config
+/// AMP uses the same format as Claude Code:
+/// - `command`: string (required for stdio)
+/// - `args`: array of strings
+/// - `env`: object with `${VAR}` syntax for environment references
+/// - `type`: "stdio" | "sse" | "http"
+/// - `url`: string (required for sse/http)
+/// - `headers`: object
 ///
 /// # Errors
+///
 /// Returns an error if the JSON is malformed or missing required fields.
-#[allow(dead_code)] // Internal utility for future MCP config reading
-pub(crate) fn parse_mcp_server(value: &serde_json::Value) -> Result<McpServer> {
+#[allow(dead_code)]
+pub(crate) fn parse_mcp_server(name: &str, value: &serde_json::Value) -> Result<McpServer> {
     let obj = value
         .as_object()
         .ok_or_else(|| Error::UnsupportedMcpConfig {
-            harness: "Claude Code".to_string(),
+            harness: "AMP Code".to_string(),
             reason: "Server configuration must be an object".to_string(),
         })?;
 
-    // Check if this is an SSE or HTTP server (has "type" field)
     if let Some(server_type) = obj.get("type").and_then(|v| v.as_str()) {
         match server_type {
-            "sse" => {
-                // Parse SSE server
-                let url = obj
-                    .get("url")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| Error::UnsupportedMcpConfig {
-                        harness: "Claude Code".to_string(),
-                        reason: "SSE server missing 'url' field".to_string(),
-                    })?
-                    .to_string();
-
-                let mut headers = HashMap::new();
-                if let Some(headers_value) = obj.get("headers") {
-                    let headers_obj =
-                        headers_value
-                            .as_object()
-                            .ok_or_else(|| Error::UnsupportedMcpConfig {
-                                harness: "Claude Code".to_string(),
-                                reason: "'headers' must be an object".to_string(),
-                            })?;
-                    for (key, value) in headers_obj {
-                        let value_str =
-                            value.as_str().ok_or_else(|| Error::UnsupportedMcpConfig {
-                                harness: "Claude Code".to_string(),
-                                reason: format!("Header '{}' must be a string", key),
-                            })?;
-                        headers.insert(
-                            key.clone(),
-                            EnvValue::from_native(value_str, HarnessKind::ClaudeCode),
-                        );
-                    }
-                }
-
-                Ok(McpServer::Sse(SseMcpServer {
-                    url,
-                    headers,
-                    enabled: true,
-                    timeout_ms: None,
-                }))
-            }
-            "http" => {
-                // Parse HTTP server
-                let url = obj
-                    .get("url")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| Error::UnsupportedMcpConfig {
-                        harness: "Claude Code".to_string(),
-                        reason: "HTTP server missing 'url' field".to_string(),
-                    })?
-                    .to_string();
-
-                let mut headers = HashMap::new();
-                if let Some(headers_value) = obj.get("headers") {
-                    let headers_obj =
-                        headers_value
-                            .as_object()
-                            .ok_or_else(|| Error::UnsupportedMcpConfig {
-                                harness: "Claude Code".to_string(),
-                                reason: "'headers' must be an object".to_string(),
-                            })?;
-                    for (key, value) in headers_obj {
-                        let value_str =
-                            value.as_str().ok_or_else(|| Error::UnsupportedMcpConfig {
-                                harness: "Claude Code".to_string(),
-                                reason: format!("Header '{}' must be a string", key),
-                            })?;
-                        headers.insert(
-                            key.clone(),
-                            EnvValue::from_native(value_str, HarnessKind::ClaudeCode),
-                        );
-                    }
-                }
-
-                Ok(McpServer::Http(HttpMcpServer {
-                    url,
-                    headers,
-                    oauth: None,
-                    enabled: true,
-                    timeout_ms: None,
-                }))
-            }
+            "sse" => parse_sse_server(obj),
+            "http" => parse_http_server(obj),
             "stdio" => parse_stdio_server(obj),
             _ => Err(Error::UnsupportedMcpConfig {
-                harness: "Claude Code".to_string(),
+                harness: "AMP Code".to_string(),
                 reason: format!("Unknown server type: {}", server_type),
             }),
         }
-    } else {
+    } else if obj.contains_key("url") && obj.contains_key("command") {
+        Err(Error::UnsupportedMcpConfig {
+            harness: "AMP Code".to_string(),
+            reason: format!(
+                "Server '{}' has both 'command' and 'url' fields - specify 'type' to disambiguate",
+                name
+            ),
+        })
+    } else if obj.contains_key("url") {
+        parse_http_server(obj)
+    } else if obj.contains_key("command") {
         parse_stdio_server(obj)
+    } else {
+        Err(Error::UnsupportedMcpConfig {
+            harness: "AMP Code".to_string(),
+            reason: format!(
+                "Server '{}' has neither 'command' (stdio) nor 'url' (http) field",
+                name
+            ),
+        })
     }
 }
 
-#[allow(dead_code)] // Internal utility for future MCP config reading
+#[allow(dead_code)]
 fn parse_stdio_server(obj: &serde_json::Map<String, serde_json::Value>) -> Result<McpServer> {
     let command = obj
         .get("command")
         .and_then(|v| v.as_str())
         .ok_or_else(|| Error::UnsupportedMcpConfig {
-            harness: "Claude Code".to_string(),
+            harness: "AMP Code".to_string(),
             reason: "Stdio server missing 'command' field".to_string(),
         })?
         .to_string();
@@ -235,7 +177,7 @@ fn parse_stdio_server(obj: &serde_json::Map<String, serde_json::Value>) -> Resul
         let arr = args_value
             .as_array()
             .ok_or_else(|| Error::UnsupportedMcpConfig {
-                harness: "Claude Code".to_string(),
+                harness: "AMP Code".to_string(),
                 reason: "'args' must be an array".to_string(),
             })?;
         arr.iter()
@@ -243,7 +185,7 @@ fn parse_stdio_server(obj: &serde_json::Map<String, serde_json::Value>) -> Resul
             .map(|(i, v)| {
                 v.as_str()
                     .ok_or_else(|| Error::UnsupportedMcpConfig {
-                        harness: "Claude Code".to_string(),
+                        harness: "AMP Code".to_string(),
                         reason: format!("args[{}] must be a string", i),
                     })
                     .map(String::from)
@@ -258,17 +200,17 @@ fn parse_stdio_server(obj: &serde_json::Map<String, serde_json::Value>) -> Resul
         let env_obj = env_value
             .as_object()
             .ok_or_else(|| Error::UnsupportedMcpConfig {
-                harness: "Claude Code".to_string(),
+                harness: "AMP Code".to_string(),
                 reason: "'env' must be an object".to_string(),
             })?;
         for (key, value) in env_obj {
             let value_str = value.as_str().ok_or_else(|| Error::UnsupportedMcpConfig {
-                harness: "Claude Code".to_string(),
+                harness: "AMP Code".to_string(),
                 reason: format!("Environment variable '{}' must be a string", key),
             })?;
             env.insert(
                 key.clone(),
-                EnvValue::from_native(value_str, HarnessKind::ClaudeCode),
+                EnvValue::from_native(value_str, HarnessKind::AmpCode),
             );
         }
     }
@@ -283,26 +225,107 @@ fn parse_stdio_server(obj: &serde_json::Map<String, serde_json::Value>) -> Resul
     }))
 }
 
-/// Parses all MCP servers from a Claude Code config JSON.
+#[allow(dead_code)]
+fn parse_sse_server(obj: &serde_json::Map<String, serde_json::Value>) -> Result<McpServer> {
+    let url = obj
+        .get("url")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| Error::UnsupportedMcpConfig {
+            harness: "AMP Code".to_string(),
+            reason: "SSE server missing 'url' field".to_string(),
+        })?
+        .to_string();
+
+    let mut headers = HashMap::new();
+    if let Some(headers_value) = obj.get("headers") {
+        let headers_obj = headers_value
+            .as_object()
+            .ok_or_else(|| Error::UnsupportedMcpConfig {
+                harness: "AMP Code".to_string(),
+                reason: "'headers' must be an object".to_string(),
+            })?;
+        for (key, value) in headers_obj {
+            let value_str = value.as_str().ok_or_else(|| Error::UnsupportedMcpConfig {
+                harness: "AMP Code".to_string(),
+                reason: format!("Header '{}' must be a string", key),
+            })?;
+            headers.insert(
+                key.clone(),
+                EnvValue::from_native(value_str, HarnessKind::AmpCode),
+            );
+        }
+    }
+
+    Ok(McpServer::Sse(SseMcpServer {
+        url,
+        headers,
+        enabled: true,
+        timeout_ms: None,
+    }))
+}
+
+#[allow(dead_code)]
+fn parse_http_server(obj: &serde_json::Map<String, serde_json::Value>) -> Result<McpServer> {
+    let url = obj
+        .get("url")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| Error::UnsupportedMcpConfig {
+            harness: "AMP Code".to_string(),
+            reason: "HTTP server missing 'url' field".to_string(),
+        })?
+        .to_string();
+
+    let mut headers = HashMap::new();
+    if let Some(headers_value) = obj.get("headers") {
+        let headers_obj = headers_value
+            .as_object()
+            .ok_or_else(|| Error::UnsupportedMcpConfig {
+                harness: "AMP Code".to_string(),
+                reason: "'headers' must be an object".to_string(),
+            })?;
+        for (key, value) in headers_obj {
+            let value_str = value.as_str().ok_or_else(|| Error::UnsupportedMcpConfig {
+                harness: "AMP Code".to_string(),
+                reason: format!("Header '{}' must be a string", key),
+            })?;
+            headers.insert(
+                key.clone(),
+                EnvValue::from_native(value_str, HarnessKind::AmpCode),
+            );
+        }
+    }
+
+    Ok(McpServer::Http(HttpMcpServer {
+        url,
+        headers,
+        oauth: None,
+        enabled: true,
+        timeout_ms: None,
+    }))
+}
+
+/// Parses all MCP servers from an AMP settings.json config.
 ///
 /// # Arguments
-/// * `config` - The full config JSON (expects mcpServers key)
+/// * `config` - The full config JSON (expects `amp.mcpServers` key path)
 ///
 /// # Errors
 /// Returns an error if the JSON is malformed.
-#[allow(dead_code)] // Internal utility for future MCP config reading
+#[allow(dead_code)]
 pub(crate) fn parse_mcp_servers(config: &serde_json::Value) -> Result<Vec<(String, McpServer)>> {
+    // Try literal dotted key first (actual AmpCode format), then nested fallback
     let servers_obj = config
-        .get("mcpServers")
-        .and_then(|v| v.as_object())
-        .ok_or_else(|| Error::UnsupportedMcpConfig {
-            harness: "Claude Code".to_string(),
-            reason: "Config missing 'mcpServers' object".to_string(),
-        })?;
+        .get("amp.mcpServers")
+        .or_else(|| config.get("amp").and_then(|v| v.get("mcpServers")))
+        .and_then(|v| v.as_object());
+
+    let Some(servers_obj) = servers_obj else {
+        return Ok(vec![]);
+    };
 
     let mut result = Vec::new();
     for (name, value) in servers_obj {
-        let server = parse_mcp_server(value)?;
+        let server = parse_mcp_server(name, value)?;
         result.push((name.clone(), server));
     }
 
@@ -316,8 +339,7 @@ mod tests {
 
     #[test]
     fn global_config_dir_is_absolute() {
-        // Skip if home dir cannot be determined (CI environments)
-        if platform::home_dir().is_err() {
+        if platform::config_dir().is_err() {
             return;
         }
 
@@ -325,19 +347,38 @@ mod tests {
         assert!(result.is_ok());
         let path = result.unwrap();
         assert!(path.is_absolute());
-        assert!(path.ends_with(".claude"));
+        assert!(path.ends_with("amp"));
     }
 
     #[test]
-    fn project_config_dir_is_relative_to_root() {
+    fn config_dir_global() {
+        if platform::config_dir().is_err() {
+            return;
+        }
+
+        let result = config_dir(&Scope::Global);
+        assert!(result.is_ok());
+        let path = result.unwrap();
+        assert!(path.ends_with("amp"));
+    }
+
+    #[test]
+    fn config_dir_project_returns_unsupported_scope() {
         let root = PathBuf::from("/some/project");
-        let config = project_config_dir(&root);
-        assert_eq!(config, PathBuf::from("/some/project/.claude"));
+        let result = config_dir(&Scope::Project(root));
+        assert!(result.is_err());
+
+        if let Err(Error::UnsupportedScope { harness, scope }) = result {
+            assert_eq!(harness, "AMP Code");
+            assert_eq!(scope, "project");
+        } else {
+            panic!("Expected UnsupportedScope error");
+        }
     }
 
     #[test]
     fn commands_dir_global() {
-        if platform::home_dir().is_err() {
+        if platform::config_dir().is_err() {
             return;
         }
 
@@ -353,19 +394,19 @@ mod tests {
         let result = commands_dir(&Scope::Project(root));
         assert!(result.is_ok());
         let path = result.unwrap();
-        assert_eq!(path, PathBuf::from("/some/project/.claude/commands"));
+        assert_eq!(path, PathBuf::from("/some/project/.agents/commands"));
     }
 
     #[test]
-    fn skills_dir_global() {
-        if platform::home_dir().is_err() {
+    fn skills_dir_global_shared_with_goose() {
+        if platform::config_dir().is_err() {
             return;
         }
 
         let result = skills_dir(&Scope::Global);
         assert!(result.is_some());
         let path = result.unwrap();
-        assert!(path.ends_with("skills"));
+        assert!(path.ends_with("agents/skills"));
     }
 
     #[test]
@@ -374,19 +415,19 @@ mod tests {
         let result = skills_dir(&Scope::Project(root));
         assert!(result.is_some());
         let path = result.unwrap();
-        assert_eq!(path, PathBuf::from("/some/project/.claude/skills"));
+        assert_eq!(path, PathBuf::from("/some/project/.agents/skills"));
     }
 
     #[test]
-    fn rules_dir_global_returns_config_dir() {
-        if platform::home_dir().is_err() {
+    fn rules_dir_global() {
+        if platform::config_dir().is_err() {
             return;
         }
 
         let result = rules_dir(&Scope::Global);
         assert!(result.is_some());
         let path = result.unwrap();
-        assert!(path.ends_with(".claude"));
+        assert!(path.ends_with("amp"));
     }
 
     #[test]
@@ -398,13 +439,21 @@ mod tests {
     }
 
     #[test]
+    fn mcp_dir_project_returns_unsupported_scope() {
+        let root = PathBuf::from("/some/project");
+        let result = mcp_dir(&Scope::Project(root));
+        assert!(result.is_err());
+        assert!(matches!(result, Err(Error::UnsupportedScope { .. })));
+    }
+
+    #[test]
     fn parse_stdio_server_basic() {
         let json = json!({
             "command": "npx",
             "args": ["-y", "@modelcontextprotocol/server-filesystem"]
         });
 
-        let result = parse_mcp_server(&json);
+        let result = parse_mcp_server("test", &json);
         assert!(result.is_ok());
 
         if let McpServer::Stdio(server) = result.unwrap() {
@@ -431,7 +480,7 @@ mod tests {
             }
         });
 
-        let result = parse_mcp_server(&json);
+        let result = parse_mcp_server("test", &json);
         assert!(result.is_ok());
 
         if let McpServer::Stdio(server) = result.unwrap() {
@@ -453,7 +502,7 @@ mod tests {
             "command": "my-server"
         });
 
-        let result = parse_mcp_server(&json);
+        let result = parse_mcp_server("test", &json);
         assert!(result.is_ok());
 
         if let McpServer::Stdio(server) = result.unwrap() {
@@ -471,7 +520,7 @@ mod tests {
             "url": "https://example.com/sse"
         });
 
-        let result = parse_mcp_server(&json);
+        let result = parse_mcp_server("test", &json);
         assert!(result.is_ok());
 
         if let McpServer::Sse(server) = result.unwrap() {
@@ -495,7 +544,7 @@ mod tests {
             }
         });
 
-        let result = parse_mcp_server(&json);
+        let result = parse_mcp_server("test", &json);
         assert!(result.is_ok());
 
         if let McpServer::Sse(server) = result.unwrap() {
@@ -521,7 +570,7 @@ mod tests {
             "url": "https://api.example.com/mcp"
         });
 
-        let result = parse_mcp_server(&json);
+        let result = parse_mcp_server("test", &json);
         assert!(result.is_ok());
 
         if let McpServer::Http(server) = result.unwrap() {
@@ -545,7 +594,7 @@ mod tests {
             }
         });
 
-        let result = parse_mcp_server(&json);
+        let result = parse_mcp_server("test", &json);
         assert!(result.is_ok());
 
         if let McpServer::Http(server) = result.unwrap() {
@@ -566,7 +615,7 @@ mod tests {
             "args": ["server.js"]
         });
 
-        let result = parse_mcp_server(&json);
+        let result = parse_mcp_server("test", &json);
         assert!(result.is_err());
     }
 
@@ -576,7 +625,7 @@ mod tests {
             "type": "sse"
         });
 
-        let result = parse_mcp_server(&json);
+        let result = parse_mcp_server("test", &json);
         assert!(result.is_err());
     }
 
@@ -586,7 +635,7 @@ mod tests {
             "type": "http"
         });
 
-        let result = parse_mcp_server(&json);
+        let result = parse_mcp_server("test", &json);
         assert!(result.is_err());
     }
 
@@ -597,7 +646,7 @@ mod tests {
             "url": "https://example.com"
         });
 
-        let result = parse_mcp_server(&json);
+        let result = parse_mcp_server("test", &json);
         assert!(result.is_err());
     }
 
@@ -605,31 +654,33 @@ mod tests {
     fn parse_mcp_server_not_object_fails() {
         let json = json!("not an object");
 
-        let result = parse_mcp_server(&json);
+        let result = parse_mcp_server("test", &json);
         assert!(result.is_err());
     }
 
     #[test]
     fn parse_mcp_servers_full_config() {
         let config = json!({
-            "mcpServers": {
-                "filesystem": {
-                    "command": "npx",
-                    "args": ["-y", "@modelcontextprotocol/server-filesystem"],
-                    "env": {
-                        "ROOT_DIR": "${HOME}"
+            "amp": {
+                "mcpServers": {
+                    "filesystem": {
+                        "command": "npx",
+                        "args": ["-y", "@modelcontextprotocol/server-filesystem"],
+                        "env": {
+                            "ROOT_DIR": "${HOME}"
+                        }
+                    },
+                    "sse-server": {
+                        "type": "sse",
+                        "url": "https://example.com/sse",
+                        "headers": {
+                            "Authorization": "${TOKEN}"
+                        }
+                    },
+                    "http-server": {
+                        "type": "http",
+                        "url": "https://api.example.com/mcp"
                     }
-                },
-                "sse-server": {
-                    "type": "sse",
-                    "url": "https://example.com/sse",
-                    "headers": {
-                        "Authorization": "${TOKEN}"
-                    }
-                },
-                "http-server": {
-                    "type": "http",
-                    "url": "https://api.example.com/mcp"
                 }
             }
         });
@@ -662,7 +713,9 @@ mod tests {
     #[test]
     fn parse_mcp_servers_empty_config() {
         let config = json!({
-            "mcpServers": {}
+            "amp": {
+                "mcpServers": {}
+            }
         });
 
         let result = parse_mcp_servers(&config);
@@ -671,23 +724,45 @@ mod tests {
     }
 
     #[test]
-    fn parse_mcp_servers_missing_mcp_servers_key_fails() {
+    fn parse_mcp_servers_missing_config_returns_empty() {
         let config = json!({
             "other": "data"
         });
 
         let result = parse_mcp_servers(&config);
-        assert!(result.is_err());
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
     }
 
     #[test]
-    fn parse_mcp_servers_mcp_servers_not_object_fails() {
+    fn parse_mcp_servers_nested_without_mcp_servers_returns_empty() {
         let config = json!({
-            "mcpServers": "not an object"
+            "amp": {
+                "other": "data"
+            }
         });
 
         let result = parse_mcp_servers(&config);
-        assert!(result.is_err());
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+    }
+
+    #[test]
+    fn parse_mcp_servers_dotted_key_format() {
+        let config = json!({
+            "amp.mcpServers": {
+                "test-server": {
+                    "command": "test-cmd",
+                    "args": ["--flag"]
+                }
+            }
+        });
+
+        let result = parse_mcp_servers(&config);
+        assert!(result.is_ok());
+        let servers = result.unwrap();
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].0, "test-server");
     }
 
     #[test]
@@ -700,7 +775,7 @@ mod tests {
             }
         });
 
-        let result = parse_mcp_server(&json);
+        let result = parse_mcp_server("test", &json);
         assert!(result.is_ok());
 
         if let McpServer::Stdio(server) = result.unwrap() {
@@ -715,48 +790,6 @@ mod tests {
     }
 
     #[test]
-    fn roundtrip_stdio_server() {
-        let original = json!({
-            "command": "npx",
-            "args": ["-y", "@modelcontextprotocol/server-filesystem"],
-            "env": {
-                "API_KEY": "${MY_KEY}",
-                "DEBUG": "true"
-            }
-        });
-
-        let parsed = parse_mcp_server(&original).unwrap();
-
-        if let McpServer::Stdio(ref server) = parsed {
-            assert_eq!(server.command, "npx");
-            assert_eq!(server.args.len(), 2);
-            assert_eq!(server.env.len(), 2);
-        } else {
-            panic!("Expected Stdio variant");
-        }
-    }
-
-    #[test]
-    fn roundtrip_sse_server() {
-        let original = json!({
-            "type": "sse",
-            "url": "https://example.com/sse",
-            "headers": {
-                "Authorization": "${TOKEN}"
-            }
-        });
-
-        let parsed = parse_mcp_server(&original).unwrap();
-
-        if let McpServer::Sse(ref server) = parsed {
-            assert_eq!(server.url, "https://example.com/sse");
-            assert_eq!(server.headers.len(), 1);
-        } else {
-            panic!("Expected Sse variant");
-        }
-    }
-
-    #[test]
     fn parse_stdio_server_with_explicit_type() {
         let json = json!({
             "type": "stdio",
@@ -764,7 +797,7 @@ mod tests {
             "args": ["-y", "server"]
         });
 
-        let result = parse_mcp_server(&json);
+        let result = parse_mcp_server("test", &json);
         assert!(result.is_ok());
 
         if let McpServer::Stdio(server) = result.unwrap() {
@@ -782,7 +815,7 @@ mod tests {
             "args": ["-y", 123, "server"]
         });
 
-        let result = parse_mcp_server(&json);
+        let result = parse_mcp_server("test", &json);
         assert!(result.is_err());
     }
 
@@ -793,7 +826,7 @@ mod tests {
             "args": "not-an-array"
         });
 
-        let result = parse_mcp_server(&json);
+        let result = parse_mcp_server("test", &json);
         assert!(result.is_err());
     }
 
@@ -804,7 +837,7 @@ mod tests {
             "env": "not-an-object"
         });
 
-        let result = parse_mcp_server(&json);
+        let result = parse_mcp_server("test", &json);
         assert!(result.is_err());
     }
 
@@ -816,27 +849,56 @@ mod tests {
             "headers": "not-an-object"
         });
 
-        let result = parse_mcp_server(&json);
+        let result = parse_mcp_server("test", &json);
         assert!(result.is_err());
     }
 
     #[test]
-    fn roundtrip_http_server() {
-        let original = json!({
-            "type": "http",
-            "url": "https://api.example.com/mcp",
-            "headers": {
-                "X-API-Key": "${KEY}"
-            }
+    fn infer_stdio_from_command_field() {
+        let json = json!({
+            "command": "npx",
+            "args": ["-y", "some-server"]
         });
 
-        let parsed = parse_mcp_server(&original).unwrap();
+        let result = parse_mcp_server("test-stdio", &json).unwrap();
+        assert!(matches!(result, McpServer::Stdio(_)));
+    }
 
-        if let McpServer::Http(ref server) = parsed {
-            assert_eq!(server.url, "https://api.example.com/mcp");
-            assert_eq!(server.headers.len(), 1);
-        } else {
-            panic!("Expected Http variant");
-        }
+    #[test]
+    fn infer_http_from_url_field() {
+        let json = json!({
+            "url": "https://example.com/mcp",
+            "headers": { "Authorization": "Bearer token" }
+        });
+
+        let result = parse_mcp_server("test-http", &json).unwrap();
+        assert!(matches!(result, McpServer::Http(_)));
+    }
+
+    #[test]
+    fn ambiguous_config_with_both_command_and_url_fails() {
+        let json = json!({
+            "command": "npx",
+            "url": "https://example.com"
+        });
+
+        let result = parse_mcp_server("ambiguous", &json);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("ambiguous"));
+        assert!(err.contains("both"));
+    }
+
+    #[test]
+    fn neither_command_nor_url_fails() {
+        let json = json!({
+            "env": { "FOO": "bar" }
+        });
+
+        let result = parse_mcp_server("incomplete", &json);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("incomplete"));
+        assert!(err.contains("neither"));
     }
 }
