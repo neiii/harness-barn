@@ -69,6 +69,21 @@ if harness.supports_mcp_server(&server) {
 | Goose | Yes | No | Yes | Yes |
 | AMP Code | Yes | Yes | Yes | Yes |
 
+## Directory Naming Conventions
+
+Different harnesses use different directory names. Use `HarnessKind::directory_names()` to query programmatically:
+
+| Resource | OpenCode | Claude Code | Goose | AMP Code |
+|----------|----------|-------------|-------|----------|
+| Skills   | `skill/` | `skills/`   | `skills/` | `skills/` |
+| Commands | `command/`| `commands/` | -     | `commands/` |
+| Agents   | `agent/` | `agents/`   | -     | -        |
+| Plugins  | `plugin/`| `plugins/`  | -     | -        |
+
+**Note:** Rules are stored at the root level, not in a named subdirectory.
+
+**Note:** OpenCode uses singular names; all others use plural.
+
 ## Resource Types
 
 ### DirectoryResource
