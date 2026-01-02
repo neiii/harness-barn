@@ -35,6 +35,10 @@ pub struct PluginDescriptor {
     /// Plugin name.
     pub name: String,
 
+    /// Path where plugin was discovered (e.g., "plugins/code-review").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+
     /// Optional description of the plugin.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -77,6 +81,50 @@ pub struct SkillDescriptor {
     /// Trigger patterns that invoke this skill.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub triggers: Vec<String>,
+}
+
+/// Result of plugin discovery with both grouped and flat access.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct DiscoveryResult {
+    /// All discovered plugins, grouped with their components.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub plugins: Vec<PluginDescriptor>,
+
+    /// Flat list of all skills across all plugins.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub all_skills: Vec<SkillDescriptor>,
+
+    /// Flat list of all commands across all plugins.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub all_commands: Vec<crate::component::CommandDescriptor>,
+
+    /// Flat list of all agents across all plugins.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub all_agents: Vec<crate::component::AgentDescriptor>,
+
+    /// Flat list of all MCP servers across all plugins.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub all_mcp_servers: Vec<crate::component::McpDescriptor>,
+}
+
+impl DiscoveryResult {
+    /// Create from a list of plugins, populating flat lists.
+    #[must_use]
+    pub fn from_plugins(plugins: Vec<PluginDescriptor>) -> Self {
+        let all_skills = plugins.iter().flat_map(|p| p.skills.clone()).collect();
+        let all_commands = plugins.iter().flat_map(|p| p.commands.clone()).collect();
+        let all_agents = plugins.iter().flat_map(|p| p.agents.clone()).collect();
+        let all_mcp_servers = plugins.iter().flat_map(|p| p.mcp_servers.clone()).collect();
+
+        Self {
+            plugins,
+            all_skills,
+            all_commands,
+            all_agents,
+            all_mcp_servers,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -130,6 +178,7 @@ mod tests {
     fn plugin_descriptor_full_serde_roundtrip() {
         let plugin = PluginDescriptor {
             name: "test-plugin".to_string(),
+            path: Some("plugins/test".to_string()),
             description: Some("A test plugin".to_string()),
             skills: vec![SkillDescriptor {
                 name: "test-skill".to_string(),
@@ -150,6 +199,7 @@ mod tests {
     fn plugin_descriptor_minimal_serde_roundtrip() {
         let plugin = PluginDescriptor {
             name: "minimal".to_string(),
+            path: None,
             description: None,
             skills: vec![],
             commands: vec![],
@@ -166,6 +216,7 @@ mod tests {
     fn plugin_descriptor_serde_omits_optional_fields() {
         let plugin = PluginDescriptor {
             name: "minimal".to_string(),
+            path: None,
             description: None,
             skills: vec![],
             commands: vec![],
@@ -222,5 +273,91 @@ mod tests {
         assert_eq!(skill.name, "test-skill");
         assert_eq!(skill.description, None);
         assert!(skill.triggers.is_empty());
+    }
+
+    #[test]
+    fn discovery_result_serde_roundtrip() {
+        let result = DiscoveryResult {
+            plugins: vec![PluginDescriptor {
+                name: "test-plugin".to_string(),
+                path: Some("plugins/test".to_string()),
+                description: Some("A test plugin".to_string()),
+                skills: vec![SkillDescriptor {
+                    name: "skill-1".to_string(),
+                    description: None,
+                    triggers: vec![],
+                }],
+                commands: vec![],
+                agents: vec![],
+                hooks: None,
+                mcp_servers: vec![],
+            }],
+            all_skills: vec![SkillDescriptor {
+                name: "skill-1".to_string(),
+                description: None,
+                triggers: vec![],
+            }],
+            all_commands: vec![],
+            all_agents: vec![],
+            all_mcp_servers: vec![],
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        let parsed: DiscoveryResult = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, result);
+    }
+
+    #[test]
+    fn discovery_result_from_plugins_flattens_components() {
+        let plugins = vec![
+            PluginDescriptor {
+                name: "plugin-a".to_string(),
+                path: Some("plugins/a".to_string()),
+                description: None,
+                skills: vec![SkillDescriptor {
+                    name: "skill-1".to_string(),
+                    description: None,
+                    triggers: vec![],
+                }],
+                commands: vec![],
+                agents: vec![],
+                hooks: None,
+                mcp_servers: vec![],
+            },
+            PluginDescriptor {
+                name: "plugin-b".to_string(),
+                path: Some("plugins/b".to_string()),
+                description: None,
+                skills: vec![SkillDescriptor {
+                    name: "skill-2".to_string(),
+                    description: None,
+                    triggers: vec![],
+                }],
+                commands: vec![],
+                agents: vec![],
+                hooks: None,
+                mcp_servers: vec![],
+            },
+        ];
+
+        let result = DiscoveryResult::from_plugins(plugins);
+        assert_eq!(result.plugins.len(), 2);
+        assert_eq!(result.all_skills.len(), 2);
+        assert_eq!(result.all_skills[0].name, "skill-1");
+        assert_eq!(result.all_skills[1].name, "skill-2");
+    }
+
+    #[test]
+    fn discovery_result_empty_serde_roundtrip() {
+        let result = DiscoveryResult {
+            plugins: vec![],
+            all_skills: vec![],
+            all_commands: vec![],
+            all_agents: vec![],
+            all_mcp_servers: vec![],
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        assert_eq!(json, "{}");
+        let parsed: DiscoveryResult = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, result);
     }
 }
