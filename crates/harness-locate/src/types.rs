@@ -777,19 +777,25 @@ mod tests {
     #[test]
     fn installation_status_is_runnable() {
         assert!(!InstallationStatus::NotInstalled.is_runnable());
-        assert!(!InstallationStatus::ConfigOnly {
-            config_path: PathBuf::from("/config"),
-        }
-        .is_runnable());
-        assert!(InstallationStatus::BinaryOnly {
-            binary_path: PathBuf::from("/bin"),
-        }
-        .is_runnable());
-        assert!(InstallationStatus::FullyInstalled {
-            binary_path: PathBuf::from("/bin"),
-            config_path: PathBuf::from("/config"),
-        }
-        .is_runnable());
+        assert!(
+            !InstallationStatus::ConfigOnly {
+                config_path: PathBuf::from("/config"),
+            }
+            .is_runnable()
+        );
+        assert!(
+            InstallationStatus::BinaryOnly {
+                binary_path: PathBuf::from("/bin"),
+            }
+            .is_runnable()
+        );
+        assert!(
+            InstallationStatus::FullyInstalled {
+                binary_path: PathBuf::from("/bin"),
+                config_path: PathBuf::from("/config"),
+            }
+            .is_runnable()
+        );
     }
 
     #[test]

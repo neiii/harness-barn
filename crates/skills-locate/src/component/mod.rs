@@ -4,9 +4,9 @@ mod hook;
 mod mcp;
 mod skill;
 
-pub use agent::{parse_agent_descriptor, AgentDescriptor};
-pub use command::{parse_command_descriptor, CommandDescriptor};
+pub use agent::{AgentDescriptor, parse_agent_descriptor};
+pub use command::{CommandDescriptor, parse_command_descriptor};
 #[allow(unused_imports)]
-pub use hook::{parse_hooks_json, HookAction, HookEvent, HookGroup, HooksConfig};
-pub use mcp::{parse_mcp_json, McpDescriptor};
+pub use hook::{HookAction, HookEvent, HookGroup, HooksConfig, parse_hooks_json};
+pub use mcp::{McpDescriptor, parse_mcp_json};
 pub use skill::parse_skill_descriptor;

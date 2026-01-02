@@ -356,7 +356,10 @@ fn derive_plugin_name(path: &str, github_ref: &GitHubRef) -> String {
     if path.is_empty() {
         github_ref.repo.clone()
     } else {
-        path.rsplit('/').next().unwrap_or(&github_ref.repo).to_string()
+        path.rsplit('/')
+            .next()
+            .unwrap_or(&github_ref.repo)
+            .to_string()
     }
 }
 
@@ -390,7 +393,7 @@ mod tests {
     #[test]
     fn extract_plugins_dir_path_valid() {
         let prefix = "repo-main/";
-        
+
         let path = "repo-main/plugins/code-review/.claude-plugin/plugin.json";
         assert_eq!(
             extract_plugins_dir_path(path, prefix),
@@ -423,7 +426,13 @@ mod tests {
         let github_ref = GitHubRef::parse("https://github.com/owner/my-repo").unwrap();
 
         assert_eq!(derive_plugin_name("", &github_ref), "my-repo");
-        assert_eq!(derive_plugin_name("plugins/code-review", &github_ref), "code-review");
-        assert_eq!(derive_plugin_name("plugins/deep/nested", &github_ref), "nested");
+        assert_eq!(
+            derive_plugin_name("plugins/code-review", &github_ref),
+            "code-review"
+        );
+        assert_eq!(
+            derive_plugin_name("plugins/deep/nested", &github_ref),
+            "nested"
+        );
     }
 }
