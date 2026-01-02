@@ -32,24 +32,29 @@ pub fn fetch_bytes(url: &str) -> Result<Vec<u8>> {
 }
 
 fn try_fetch(url: &str) -> Result<Vec<u8>> {
-    let response = ureq::get(url).call().map_err(|e| match e {
+    let mut response = ureq::get(url).call().map_err(|e| match e {
         ureq::Error::StatusCode(code) => Error::Http(format!("HTTP {code} for {url}")),
         ureq::Error::Io(io_err) => Error::Http(format!("transport error: {io_err}")),
         _ => Error::Http(format!("request failed: {e}")),
     })?;
 
-    if let Some(len) = response.headers().get("content-length")
-        && let Ok(size) = len.to_str().unwrap_or("").parse::<u64>()
-        && size > SIZE_LIMIT
-    {
-        return Err(Error::SizeLimit {
-            size,
-            limit: SIZE_LIMIT,
-        });
+    // Check content-length header before reading body
+    if let Some(len) = response.headers().get("content-length") {
+        if let Ok(size) = len.to_str().unwrap_or("").parse::<u64>() {
+            if size > SIZE_LIMIT {
+                return Err(Error::SizeLimit {
+                    size,
+                    limit: SIZE_LIMIT,
+                });
+            }
+        }
     }
 
+    // ureq 3.x: must use body_mut().with_config().limit() to override 10MB default
     let bytes = response
-        .into_body()
+        .body_mut()
+        .with_config()
+        .limit(SIZE_LIMIT)
         .read_to_vec()
         .map_err(|e| Error::Http(format!("read error: {e}")))?;
 

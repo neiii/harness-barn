@@ -32,20 +32,40 @@ struct McpServerEntry {
     env: HashMap<String, String>,
 }
 
-/// Parse a .mcp.json file content into a list of MCP descriptors.
-pub fn parse_mcp_json(content: &str) -> Result<Vec<McpDescriptor>> {
-    let map: HashMap<String, McpServerEntry> =
-        serde_json::from_str(content).map_err(Error::JsonParse)?;
+/// Wrapped format used by Claude's .mcp.json files.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct McpJsonWrapped {
+    mcp_servers: HashMap<String, McpServerEntry>,
+}
 
-    Ok(map
-        .into_iter()
+fn convert_entries(map: HashMap<String, McpServerEntry>) -> Vec<McpDescriptor> {
+    map.into_iter()
         .map(|(name, entry)| McpDescriptor {
             name,
             command: entry.command,
             args: entry.args,
             env: entry.env,
         })
-        .collect())
+        .collect()
+}
+
+/// Parse a .mcp.json file content into a list of MCP descriptors.
+///
+/// Supports both formats:
+/// - Wrapped: `{ "mcpServers": { "name": { ... } } }` (Claude's format)
+/// - Flat: `{ "name": { ... } }` (plugin format)
+pub fn parse_mcp_json(content: &str) -> Result<Vec<McpDescriptor>> {
+    // Try wrapped format first (Claude's actual format)
+    if let Ok(wrapped) = serde_json::from_str::<McpJsonWrapped>(content) {
+        return Ok(convert_entries(wrapped.mcp_servers));
+    }
+
+    // Fall back to flat format
+    let map: HashMap<String, McpServerEntry> =
+        serde_json::from_str(content).map_err(Error::JsonParse)?;
+
+    Ok(convert_entries(map))
 }
 
 #[cfg(test)]
@@ -114,5 +134,22 @@ mod tests {
     fn parse_invalid_json_returns_error() {
         let content = "not json";
         assert!(parse_mcp_json(content).is_err());
+    }
+
+    #[test]
+    fn parse_wrapped_format() {
+        let content = r#"{
+            "mcpServers": {
+                "my-server": {
+                    "command": "node",
+                    "args": ["server.js"],
+                    "env": {"PORT": "3000"}
+                }
+            }
+        }"#;
+        let servers = parse_mcp_json(content).unwrap();
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].name, "my-server");
+        assert_eq!(servers[0].command, "node");
     }
 }
