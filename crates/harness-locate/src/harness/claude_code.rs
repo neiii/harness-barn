@@ -106,6 +106,37 @@ pub fn rules_dir(scope: &Scope) -> Option<PathBuf> {
     }
 }
 
+/// Returns the agents directory for the given scope.
+///
+/// Claude Code stores agents as markdown files with YAML frontmatter:
+/// - **Global**: `~/.claude/agents/`
+/// - **Project**: `.claude/agents/`
+#[must_use]
+pub fn agents_dir(scope: &Scope) -> Option<PathBuf> {
+    match scope {
+        Scope::Global => global_config_dir().ok().map(|p| p.join("agents")),
+        Scope::Project(root) => Some(project_config_dir(root).join("agents")),
+        Scope::Custom(path) => Some(path.join("agents")),
+    }
+}
+
+/// Returns the plugins directory for the given scope.
+///
+/// Claude Code stores plugins as directories with a `.claude-plugin` marker:
+/// - **Global**: `~/.claude/plugins/`
+/// - **Project**: `.claude/plugins/`
+///
+/// Each plugin is a subdirectory containing a `.claude-plugin/` marker directory
+/// with `plugin.json` inside.
+#[must_use]
+pub fn plugins_dir(scope: &Scope) -> Option<PathBuf> {
+    match scope {
+        Scope::Global => global_config_dir().ok().map(|p| p.join("plugins")),
+        Scope::Project(root) => Some(project_config_dir(root).join("plugins")),
+        Scope::Custom(path) => Some(path.join("plugins")),
+    }
+}
+
 /// Checks if Claude Code is installed on this system.
 ///
 /// Currently checks if the global config directory exists.
@@ -692,6 +723,48 @@ mod tests {
 
         let result = parse_mcp_servers(&config);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn agents_dir_global() {
+        if platform::home_dir().is_err() {
+            return;
+        }
+
+        let result = agents_dir(&Scope::Global);
+        assert!(result.is_some());
+        let path = result.unwrap();
+        assert!(path.ends_with("agents"));
+    }
+
+    #[test]
+    fn agents_dir_project() {
+        let root = PathBuf::from("/some/project");
+        let result = agents_dir(&Scope::Project(root));
+        assert!(result.is_some());
+        let path = result.unwrap();
+        assert_eq!(path, PathBuf::from("/some/project/.claude/agents"));
+    }
+
+    #[test]
+    fn plugins_dir_global() {
+        if platform::home_dir().is_err() {
+            return;
+        }
+
+        let result = plugins_dir(&Scope::Global);
+        assert!(result.is_some());
+        let path = result.unwrap();
+        assert!(path.ends_with("plugins"));
+    }
+
+    #[test]
+    fn plugins_dir_project() {
+        let root = PathBuf::from("/some/project");
+        let result = plugins_dir(&Scope::Project(root));
+        assert!(result.is_some());
+        let path = result.unwrap();
+        assert_eq!(path, PathBuf::from("/some/project/.claude/plugins"));
     }
 
     #[test]

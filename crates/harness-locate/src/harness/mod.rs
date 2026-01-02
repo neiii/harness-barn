@@ -305,11 +305,14 @@ impl Harness {
 
     /// Returns the plugins directory resource for the given scope.
     ///
-    /// Only OpenCode supports plugins. Claude Code and Goose return `Ok(None)`.
-    ///
     /// # Errors
     ///
     /// Returns an error if the configuration directory cannot be determined.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(None)` if this harness does not support plugins (Goose)
+    /// - `Ok(Some(resource))` if plugins are supported (Claude Code, OpenCode)
     ///
     /// # Examples
     ///
@@ -324,6 +327,19 @@ impl Harness {
     /// ```
     pub fn plugins(&self, scope: &Scope) -> Result<Option<DirectoryResource>> {
         match self.kind {
+            HarnessKind::ClaudeCode => {
+                let path = claude_code::plugins_dir(scope)
+                    .ok_or_else(|| Error::NotFound("plugins directory".into()))?;
+                Ok(Some(DirectoryResource {
+                    exists: path.exists(),
+                    path,
+                    structure: DirectoryStructure::Nested {
+                        subdir_pattern: "*".into(),
+                        file_name: ".claude-plugin".into(),
+                    },
+                    file_format: FileFormat::Json,
+                }))
+            }
             HarnessKind::OpenCode => {
                 let path = opencode::config_dir(scope)?.join("plugin");
                 Ok(Some(DirectoryResource {
@@ -335,17 +351,20 @@ impl Harness {
                     file_format: FileFormat::Json,
                 }))
             }
-            HarnessKind::ClaudeCode | HarnessKind::Goose | HarnessKind::AmpCode => Ok(None),
+            HarnessKind::Goose | HarnessKind::AmpCode => Ok(None),
         }
     }
 
     /// Returns the agents directory resource for the given scope.
     ///
-    /// Only OpenCode supports custom agents. Claude Code and Goose return `Ok(None)`.
-    ///
     /// # Errors
     ///
     /// Returns an error if the configuration directory cannot be determined.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(None)` if this harness does not support agents (Goose)
+    /// - `Ok(Some(resource))` if agents are supported (Claude Code, OpenCode)
     ///
     /// # Examples
     ///
@@ -360,6 +379,18 @@ impl Harness {
     /// ```
     pub fn agents(&self, scope: &Scope) -> Result<Option<DirectoryResource>> {
         match self.kind {
+            HarnessKind::ClaudeCode => {
+                let path = claude_code::agents_dir(scope)
+                    .ok_or_else(|| Error::NotFound("agents directory".into()))?;
+                Ok(Some(DirectoryResource {
+                    exists: path.exists(),
+                    path,
+                    structure: DirectoryStructure::Flat {
+                        file_pattern: "*.md".into(),
+                    },
+                    file_format: FileFormat::MarkdownWithFrontmatter,
+                }))
+            }
             HarnessKind::OpenCode => {
                 let path = opencode::config_dir(scope)?.join("agent");
                 Ok(Some(DirectoryResource {
@@ -371,7 +402,7 @@ impl Harness {
                     file_format: FileFormat::Yaml,
                 }))
             }
-            HarnessKind::ClaudeCode | HarnessKind::Goose | HarnessKind::AmpCode => Ok(None),
+            HarnessKind::Goose | HarnessKind::AmpCode => Ok(None),
         }
     }
 
@@ -1223,21 +1254,43 @@ mod tests {
     }
 
     #[test]
-    fn plugins_none_for_non_opencode() {
-        let harness = Harness::new(HarnessKind::ClaudeCode);
-        assert!(harness.plugins(&Scope::Global).unwrap().is_none());
-
+    fn plugins_none_for_goose() {
         let harness = Harness::new(HarnessKind::Goose);
         assert!(harness.plugins(&Scope::Global).unwrap().is_none());
     }
 
     #[test]
-    fn agents_none_for_non_opencode() {
-        let harness = Harness::new(HarnessKind::ClaudeCode);
-        assert!(harness.agents(&Scope::Global).unwrap().is_none());
-
+    fn agents_none_for_goose() {
         let harness = Harness::new(HarnessKind::Goose);
         assert!(harness.agents(&Scope::Global).unwrap().is_none());
+    }
+
+    #[test]
+    fn plugins_for_claude_code() {
+        if !claude_code::is_installed() {
+            return;
+        }
+
+        let harness = Harness::new(HarnessKind::ClaudeCode);
+        let resource = harness.plugins(&Scope::Global).unwrap();
+        assert!(resource.is_some());
+        let dir = resource.unwrap();
+        assert!(dir.path.ends_with("plugins"));
+        assert!(matches!(dir.structure, DirectoryStructure::Nested { .. }));
+    }
+
+    #[test]
+    fn agents_for_claude_code() {
+        if !claude_code::is_installed() {
+            return;
+        }
+
+        let harness = Harness::new(HarnessKind::ClaudeCode);
+        let resource = harness.agents(&Scope::Global).unwrap();
+        assert!(resource.is_some());
+        let dir = resource.unwrap();
+        assert!(dir.path.ends_with("agents"));
+        assert!(matches!(dir.structure, DirectoryStructure::Flat { .. }));
     }
 
     #[test]

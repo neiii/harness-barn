@@ -280,7 +280,10 @@ pub enum DirectoryStructure {
     Nested {
         /// Pattern for subdirectory names (e.g., `"*"`).
         subdir_pattern: String,
-        /// Fixed filename within each subdirectory (e.g., `"SKILL.md"`).
+        /// Fixed filename or marker directory within each subdirectory.
+        ///
+        /// Can be a file (e.g., `"SKILL.md"`) or a marker directory
+        /// (e.g., `".claude-plugin"` for plugin detection).
         file_name: String,
     },
 }
