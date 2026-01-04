@@ -167,6 +167,7 @@ impl McpServer {
             Self::Sse(s) => {
                 let mut obj = serde_json::json!({
                     "url": s.url,
+                    "type": "sse",
                 });
                 if !s.headers.is_empty() {
                     let headers: std::collections::HashMap<String, String> = s
@@ -217,7 +218,7 @@ impl McpServer {
                 if let Some(timeout_ms) = s.timeout_ms {
                     obj["timeout"] = serde_json::json!(timeout_ms);
                 }
-                obj["enabled"] = serde_json::json!(s.enabled);
+                obj["enabled"] = serde_json::json!(true);
                 Ok(obj)
             }
             Self::Sse(s) => {
@@ -236,7 +237,7 @@ impl McpServer {
                 if let Some(timeout_ms) = s.timeout_ms {
                     obj["timeout"] = serde_json::json!(timeout_ms);
                 }
-                obj["enabled"] = serde_json::json!(s.enabled);
+                obj["enabled"] = serde_json::json!(true);
                 Ok(obj)
             }
             Self::Http(h) => {
@@ -255,7 +256,6 @@ impl McpServer {
                 if let Some(timeout_ms) = h.timeout_ms {
                     obj["timeout"] = serde_json::json!(timeout_ms);
                 }
-                obj["enabled"] = serde_json::json!(h.enabled);
                 if let Some(oauth) = &h.oauth {
                     let mut oauth_obj = serde_json::Map::new();
                     if let Some(client_id) = &oauth.client_id {
@@ -272,6 +272,7 @@ impl McpServer {
                     }
                     obj["oauth"] = serde_json::Value::Object(oauth_obj);
                 }
+                obj["enabled"] = serde_json::json!(true);
                 Ok(obj)
             }
         }
