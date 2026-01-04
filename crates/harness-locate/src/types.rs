@@ -511,6 +511,48 @@ impl EnvValue {
         }
     }
 
+    /// Fallible version of [`to_native`](Self::to_native) that returns an error
+    /// when an environment variable reference cannot be resolved.
+    ///
+    /// For Goose harness, this validates that the referenced environment variable
+    /// is actually set, returning `Error::MissingEnvVar` if not.
+    ///
+    /// For other harnesses that use template syntax (Claude Code, OpenCode, AmpCode),
+    /// this behaves identically to `to_native` since the variable is not resolved
+    /// at conversion time.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::MissingEnvVar`] if the harness is Goose and the
+    /// referenced environment variable is not set.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use harness_locate::types::{EnvValue, HarnessKind};
+    ///
+    /// // Template-based harnesses always succeed
+    /// let value = EnvValue::env("SOME_VAR");
+    /// assert!(value.try_to_native(HarnessKind::ClaudeCode).is_ok());
+    ///
+    /// // Goose requires the env var to be set
+    /// // SAFETY: Test environment only, no concurrent access
+    /// unsafe { std::env::set_var("TEST_VAR", "value"); }
+    /// let value = EnvValue::env("TEST_VAR");
+    /// assert_eq!(value.try_to_native(HarnessKind::Goose).unwrap(), "value");
+    /// ```
+    pub fn try_to_native(&self, kind: HarnessKind) -> crate::Result<String> {
+        match self {
+            Self::Plain(s) => Ok(s.clone()),
+            Self::EnvRef { env } => match kind {
+                HarnessKind::ClaudeCode | HarnessKind::AmpCode => Ok(format!("${{{env}}}")),
+                HarnessKind::OpenCode => Ok(format!("{{env:{env}}}")),
+                HarnessKind::Goose => std::env::var(env)
+                    .map_err(|_| crate::Error::MissingEnvVar { name: env.clone() }),
+            },
+        }
+    }
+
     /// Parses a harness-specific native string format into an `EnvValue`.
     ///
     /// # Arguments
@@ -669,6 +711,59 @@ mod tests {
     }
 
     #[test]
+    fn try_to_native_plain_always_succeeds() {
+        let value = EnvValue::plain("hello world");
+        assert_eq!(
+            value.try_to_native(HarnessKind::ClaudeCode).unwrap(),
+            "hello world"
+        );
+        assert_eq!(
+            value.try_to_native(HarnessKind::OpenCode).unwrap(),
+            "hello world"
+        );
+        assert_eq!(
+            value.try_to_native(HarnessKind::Goose).unwrap(),
+            "hello world"
+        );
+    }
+
+    #[test]
+    fn try_to_native_template_harnesses_always_succeed() {
+        let value = EnvValue::env("NONEXISTENT_VAR_XYZ");
+        assert_eq!(
+            value.try_to_native(HarnessKind::ClaudeCode).unwrap(),
+            "${NONEXISTENT_VAR_XYZ}"
+        );
+        assert_eq!(
+            value.try_to_native(HarnessKind::OpenCode).unwrap(),
+            "{env:NONEXISTENT_VAR_XYZ}"
+        );
+        assert_eq!(
+            value.try_to_native(HarnessKind::AmpCode).unwrap(),
+            "${NONEXISTENT_VAR_XYZ}"
+        );
+    }
+
+    #[test]
+    fn try_to_native_goose_succeeds_when_var_set() {
+        unsafe { std::env::set_var("TEST_TRY_NATIVE_VAR", "success") };
+        let value = EnvValue::env("TEST_TRY_NATIVE_VAR");
+        assert_eq!(value.try_to_native(HarnessKind::Goose).unwrap(), "success");
+        unsafe { std::env::remove_var("TEST_TRY_NATIVE_VAR") };
+    }
+
+    #[test]
+    fn try_to_native_goose_fails_when_var_unset() {
+        let value = EnvValue::env("DEFINITELY_NOT_SET_VAR_ABC");
+        let result = value.try_to_native(HarnessKind::Goose);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, crate::Error::MissingEnvVar { name } if name == "DEFINITELY_NOT_SET_VAR_ABC")
+        );
+    }
+
+    #[test]
     fn from_native_claude_code_parses_env_ref() {
         let value = EnvValue::from_native("${MY_VAR}", HarnessKind::ClaudeCode);
         assert_eq!(value, EnvValue::env("MY_VAR"));
@@ -777,25 +872,19 @@ mod tests {
     #[test]
     fn installation_status_is_runnable() {
         assert!(!InstallationStatus::NotInstalled.is_runnable());
-        assert!(
-            !InstallationStatus::ConfigOnly {
-                config_path: PathBuf::from("/config"),
-            }
-            .is_runnable()
-        );
-        assert!(
-            InstallationStatus::BinaryOnly {
-                binary_path: PathBuf::from("/bin"),
-            }
-            .is_runnable()
-        );
-        assert!(
-            InstallationStatus::FullyInstalled {
-                binary_path: PathBuf::from("/bin"),
-                config_path: PathBuf::from("/config"),
-            }
-            .is_runnable()
-        );
+        assert!(!InstallationStatus::ConfigOnly {
+            config_path: PathBuf::from("/config"),
+        }
+        .is_runnable());
+        assert!(InstallationStatus::BinaryOnly {
+            binary_path: PathBuf::from("/bin"),
+        }
+        .is_runnable());
+        assert!(InstallationStatus::FullyInstalled {
+            binary_path: PathBuf::from("/bin"),
+            config_path: PathBuf::from("/config"),
+        }
+        .is_runnable());
     }
 
     #[test]

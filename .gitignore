@@ -2,6 +2,7 @@
 /docs
 .opencode
 .sisyphus
+.docs
 AGENTS.md
 AGENTIC_WORKFLOW.md
 HARNESS_SPEC.md

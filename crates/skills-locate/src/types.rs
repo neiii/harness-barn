@@ -1,5 +1,7 @@
 //! Core type definitions for skills discovery.
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 /// Source location for a plugin.
@@ -59,9 +61,9 @@ pub struct PluginDescriptor {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hooks: Option<crate::component::HooksConfig>,
 
-    /// MCP server descriptors from .mcp.json.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub mcp_servers: Vec<crate::component::McpDescriptor>,
+    /// MCP server descriptors from .mcp.json, keyed by server name.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub mcp_servers: HashMap<String, crate::component::McpServer>,
 }
 
 /// Skill metadata descriptor.
@@ -103,9 +105,9 @@ pub struct DiscoveryResult {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub all_agents: Vec<crate::component::AgentDescriptor>,
 
-    /// Flat list of all MCP servers across all plugins.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub all_mcp_servers: Vec<crate::component::McpDescriptor>,
+    /// Flat list of all MCP servers across all plugins, keyed by server name.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub all_mcp_servers: HashMap<String, crate::component::McpServer>,
 }
 
 impl DiscoveryResult {
@@ -188,7 +190,7 @@ mod tests {
             commands: vec![],
             agents: vec![],
             hooks: None,
-            mcp_servers: vec![],
+            mcp_servers: HashMap::new(),
         };
         let json = serde_json::to_string(&plugin).unwrap();
         let parsed: PluginDescriptor = serde_json::from_str(&json).unwrap();
@@ -205,7 +207,7 @@ mod tests {
             commands: vec![],
             agents: vec![],
             hooks: None,
-            mcp_servers: vec![],
+            mcp_servers: HashMap::new(),
         };
         let json = serde_json::to_string(&plugin).unwrap();
         let parsed: PluginDescriptor = serde_json::from_str(&json).unwrap();
@@ -222,7 +224,7 @@ mod tests {
             commands: vec![],
             agents: vec![],
             hooks: None,
-            mcp_servers: vec![],
+            mcp_servers: HashMap::new(),
         };
         let json = serde_json::to_string(&plugin).unwrap();
         assert_eq!(json, r#"{"name":"minimal"}"#);
@@ -290,7 +292,7 @@ mod tests {
                 commands: vec![],
                 agents: vec![],
                 hooks: None,
-                mcp_servers: vec![],
+                mcp_servers: HashMap::new(),
             }],
             all_skills: vec![SkillDescriptor {
                 name: "skill-1".to_string(),
@@ -299,7 +301,7 @@ mod tests {
             }],
             all_commands: vec![],
             all_agents: vec![],
-            all_mcp_servers: vec![],
+            all_mcp_servers: HashMap::new(),
         };
         let json = serde_json::to_string(&result).unwrap();
         let parsed: DiscoveryResult = serde_json::from_str(&json).unwrap();
@@ -321,7 +323,7 @@ mod tests {
                 commands: vec![],
                 agents: vec![],
                 hooks: None,
-                mcp_servers: vec![],
+                mcp_servers: HashMap::new(),
             },
             PluginDescriptor {
                 name: "plugin-b".to_string(),
@@ -335,7 +337,7 @@ mod tests {
                 commands: vec![],
                 agents: vec![],
                 hooks: None,
-                mcp_servers: vec![],
+                mcp_servers: HashMap::new(),
             },
         ];
 
@@ -353,7 +355,7 @@ mod tests {
             all_skills: vec![],
             all_commands: vec![],
             all_agents: vec![],
-            all_mcp_servers: vec![],
+            all_mcp_servers: HashMap::new(),
         };
         let json = serde_json::to_string(&result).unwrap();
         assert_eq!(json, "{}");

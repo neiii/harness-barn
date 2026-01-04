@@ -3,8 +3,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use serde_json::json;
-
 use crate::error::{Error, Result};
 use crate::mcp::{McpCapabilities, McpServer};
 use crate::types::{
@@ -703,258 +701,7 @@ impl Harness {
     /// let native = harness.mcp_to_native("my-server", &server).unwrap();
     /// ```
     pub fn mcp_to_native(&self, name: &str, server: &McpServer) -> Result<serde_json::Value> {
-        if !self.supports_mcp_server(server) {
-            return Err(Error::UnsupportedMcpConfig {
-                harness: self.kind.to_string(),
-                reason: "Server uses unsupported features".into(),
-            });
-        }
-
-        match self.kind {
-            HarnessKind::ClaudeCode => self.mcp_to_native_claude_code(name, server),
-            HarnessKind::OpenCode => self.mcp_to_native_opencode(name, server),
-            HarnessKind::Goose => self.mcp_to_native_goose(name, server),
-            HarnessKind::AmpCode => self.mcp_to_native_claude_code(name, server),
-        }
-    }
-
-    fn mcp_to_native_claude_code(
-        &self,
-        _name: &str,
-        server: &McpServer,
-    ) -> Result<serde_json::Value> {
-        match server {
-            McpServer::Stdio(s) => {
-                let mut env_map = serde_json::Map::new();
-                for (key, value) in &s.env {
-                    env_map.insert(key.clone(), json!(value.to_native(HarnessKind::ClaudeCode)));
-                }
-
-                let mut obj = serde_json::Map::new();
-                obj.insert("command".into(), json!(s.command));
-
-                if !s.args.is_empty() {
-                    obj.insert("args".into(), json!(s.args));
-                }
-
-                if !env_map.is_empty() {
-                    obj.insert("env".into(), json!(env_map));
-                }
-
-                Ok(json!(obj))
-            }
-            McpServer::Sse(s) => {
-                let mut obj = serde_json::Map::new();
-                obj.insert("type".into(), json!("sse"));
-                obj.insert("url".into(), json!(s.url));
-
-                if !s.headers.is_empty() {
-                    let mut headers_map = serde_json::Map::new();
-                    for (key, value) in &s.headers {
-                        headers_map
-                            .insert(key.clone(), json!(value.to_native(HarnessKind::ClaudeCode)));
-                    }
-                    obj.insert("headers".into(), json!(headers_map));
-                }
-
-                Ok(json!(obj))
-            }
-            McpServer::Http(s) => {
-                let mut obj = serde_json::Map::new();
-                obj.insert("type".into(), json!("http"));
-                obj.insert("url".into(), json!(s.url));
-
-                if !s.headers.is_empty() {
-                    let mut headers_map = serde_json::Map::new();
-                    for (key, value) in &s.headers {
-                        headers_map
-                            .insert(key.clone(), json!(value.to_native(HarnessKind::ClaudeCode)));
-                    }
-                    obj.insert("headers".into(), json!(headers_map));
-                }
-
-                Ok(json!(obj))
-            }
-        }
-    }
-
-    fn mcp_to_native_goose(&self, name: &str, server: &McpServer) -> Result<serde_json::Value> {
-        match server {
-            McpServer::Stdio(s) => {
-                let mut obj = serde_json::Map::new();
-                obj.insert("name".into(), json!(name));
-                obj.insert("type".into(), json!("stdio"));
-                obj.insert("cmd".into(), json!(s.command));
-
-                if !s.args.is_empty() {
-                    obj.insert("args".into(), json!(s.args));
-                }
-
-                if !s.env.is_empty() {
-                    let mut envs_map = serde_json::Map::new();
-                    for (key, value) in &s.env {
-                        envs_map.insert(key.clone(), json!(value.to_native(HarnessKind::Goose)));
-                    }
-                    obj.insert("envs".into(), json!(envs_map));
-                }
-
-                obj.insert("enabled".into(), json!(s.enabled));
-
-                if let Some(timeout_ms) = s.timeout_ms {
-                    let timeout_seconds = timeout_ms / 1000;
-                    obj.insert("timeout".into(), json!(timeout_seconds));
-                }
-
-                obj.insert("description".into(), json!(""));
-
-                Ok(json!(obj))
-            }
-            McpServer::Sse(s) => {
-                let mut obj = serde_json::Map::new();
-                obj.insert("name".into(), json!(name));
-                obj.insert("type".into(), json!("sse"));
-                obj.insert("uri".into(), json!(s.url));
-                obj.insert("enabled".into(), json!(s.enabled));
-
-                if let Some(timeout_ms) = s.timeout_ms {
-                    let timeout_seconds = timeout_ms / 1000;
-                    obj.insert("timeout".into(), json!(timeout_seconds));
-                }
-
-                obj.insert("description".into(), json!(""));
-
-                Ok(json!(obj))
-            }
-            McpServer::Http(s) => {
-                let mut obj = serde_json::Map::new();
-                obj.insert("name".into(), json!(name));
-                obj.insert("type".into(), json!("streamable_http"));
-                obj.insert("uri".into(), json!(s.url));
-
-                if !s.headers.is_empty() {
-                    let mut headers_map = serde_json::Map::new();
-                    for (key, value) in &s.headers {
-                        headers_map.insert(key.clone(), json!(value.to_native(HarnessKind::Goose)));
-                    }
-                    obj.insert("headers".into(), json!(headers_map));
-                }
-
-                obj.insert("enabled".into(), json!(s.enabled));
-
-                if let Some(timeout_ms) = s.timeout_ms {
-                    let timeout_seconds = timeout_ms / 1000;
-                    obj.insert("timeout".into(), json!(timeout_seconds));
-                }
-
-                obj.insert("description".into(), json!(""));
-
-                Ok(json!(obj))
-            }
-        }
-    }
-
-    fn mcp_to_native_opencode(&self, _name: &str, server: &McpServer) -> Result<serde_json::Value> {
-        match server {
-            McpServer::Stdio(stdio) => {
-                // Build command array: [command, ...args]
-                let mut command = vec![stdio.command.clone()];
-                command.extend(stdio.args.clone());
-
-                // Convert environment variables to OpenCode format
-                let environment: serde_json::Map<String, serde_json::Value> = stdio
-                    .env
-                    .iter()
-                    .map(|(k, v)| {
-                        let value = v.to_native(HarnessKind::OpenCode);
-                        (k.clone(), json!(value))
-                    })
-                    .collect();
-
-                let mut config = json!({
-                    "type": "local",
-                    "command": command,
-                    "enabled": stdio.enabled,
-                });
-
-                // Add optional fields
-                if !environment.is_empty() {
-                    config["environment"] = json!(environment);
-                }
-                if let Some(timeout) = stdio.timeout_ms {
-                    config["timeout"] = json!(timeout);
-                }
-
-                Ok(config)
-            }
-            McpServer::Http(http) => {
-                // Convert headers to OpenCode format
-                let headers: serde_json::Map<String, serde_json::Value> = http
-                    .headers
-                    .iter()
-                    .map(|(k, v)| {
-                        let value = v.to_native(HarnessKind::OpenCode);
-                        (k.clone(), json!(value))
-                    })
-                    .collect();
-
-                let mut config = json!({
-                    "type": "remote",
-                    "url": http.url,
-                    "enabled": http.enabled,
-                });
-
-                // Add optional fields
-                if !headers.is_empty() {
-                    config["headers"] = json!(headers);
-                }
-                if let Some(timeout) = http.timeout_ms {
-                    config["timeout"] = json!(timeout);
-                }
-                if let Some(oauth) = &http.oauth {
-                    let mut oauth_config = serde_json::Map::new();
-                    if let Some(client_id) = &oauth.client_id {
-                        oauth_config.insert("client_id".to_string(), json!(client_id));
-                    }
-                    if let Some(client_secret) = &oauth.client_secret {
-                        let secret_value = client_secret.to_native(HarnessKind::OpenCode);
-                        oauth_config.insert("client_secret".to_string(), json!(secret_value));
-                    }
-                    if let Some(scope) = &oauth.scope {
-                        oauth_config.insert("scope".to_string(), json!(scope));
-                    }
-                    if !oauth_config.is_empty() {
-                        config["oauth"] = json!(oauth_config);
-                    }
-                }
-
-                Ok(config)
-            }
-            McpServer::Sse(sse) => {
-                let headers: serde_json::Map<String, serde_json::Value> = sse
-                    .headers
-                    .iter()
-                    .map(|(k, v)| {
-                        let value = v.to_native(HarnessKind::OpenCode);
-                        (k.clone(), json!(value))
-                    })
-                    .collect();
-
-                let mut config = json!({
-                    "type": "remote",
-                    "url": sse.url,
-                    "enabled": sse.enabled,
-                });
-
-                if !headers.is_empty() {
-                    config["headers"] = json!(headers);
-                }
-                if let Some(timeout) = sse.timeout_ms {
-                    config["timeout"] = json!(timeout);
-                }
-
-                Ok(config)
-            }
-        }
+        server.to_native_value(self.kind, name)
     }
 
     /// Parses MCP server configurations from harness-native JSON format.
@@ -1383,7 +1130,7 @@ mod tests {
         assert!(opencode.mcp_capabilities().oauth);
 
         let goose = Harness::new(HarnessKind::Goose);
-        assert!(goose.mcp_capabilities().oauth);
+        assert!(!goose.mcp_capabilities().oauth); // Goose doesn't support OAuth
     }
 
     #[test]
@@ -1481,7 +1228,7 @@ mod tests {
             env: std::collections::HashMap::new(),
             cwd: None,
             enabled: true,
-            timeout_ms: Some(30000),
+            timeout_ms: None, // Goose doesn't support timeout
         });
 
         let result = harness.mcp_to_native("test-server", &server).unwrap();
@@ -1489,7 +1236,6 @@ mod tests {
         assert_eq!(obj.get("type").unwrap(), "stdio");
         assert_eq!(obj.get("cmd").unwrap(), "node");
         assert_eq!(obj.get("name").unwrap(), "test-server");
-        assert_eq!(obj.get("timeout").unwrap(), 30);
         assert_eq!(obj.get("description").unwrap(), "");
         assert_eq!(obj.get("enabled").unwrap(), true);
 
@@ -1498,7 +1244,7 @@ mod tests {
     }
 
     #[test]
-    fn mcp_to_native_goose_sse() {
+    fn mcp_to_native_goose_sse_unsupported() {
         use crate::mcp::SseMcpServer;
 
         let harness = Harness::new(HarnessKind::Goose);
@@ -1506,34 +1252,24 @@ mod tests {
             url: "https://example.com/sse".to_string(),
             headers: std::collections::HashMap::new(),
             enabled: true,
-            timeout_ms: Some(45000),
+            timeout_ms: None,
         });
 
-        let result = harness.mcp_to_native("sse-server", &server).unwrap();
-        let obj = result.as_object().unwrap();
-        assert_eq!(obj.get("type").unwrap(), "sse");
-        assert_eq!(obj.get("uri").unwrap(), "https://example.com/sse");
-        assert_eq!(obj.get("name").unwrap(), "sse-server");
-        assert_eq!(obj.get("timeout").unwrap(), 45);
-        assert_eq!(obj.get("description").unwrap(), "");
-        assert_eq!(obj.get("enabled").unwrap(), true);
+        let result = harness.mcp_to_native("sse-server", &server);
+        assert!(result.is_err());
     }
 
     #[test]
     fn mcp_to_native_goose_http() {
         use crate::mcp::HttpMcpServer;
-        use crate::types::EnvValue;
 
         let harness = Harness::new(HarnessKind::Goose);
-        let mut headers = std::collections::HashMap::new();
-        headers.insert("Authorization".to_string(), EnvValue::plain("Bearer token"));
-
         let server = McpServer::Http(HttpMcpServer {
             url: "https://api.example.com/mcp".to_string(),
-            headers,
+            headers: std::collections::HashMap::new(),
             oauth: None,
             enabled: true,
-            timeout_ms: Some(60000),
+            timeout_ms: None,
         });
 
         let result = harness.mcp_to_native("http-server", &server).unwrap();
@@ -1541,16 +1277,12 @@ mod tests {
         assert_eq!(obj.get("type").unwrap(), "streamable_http");
         assert_eq!(obj.get("uri").unwrap(), "https://api.example.com/mcp");
         assert_eq!(obj.get("name").unwrap(), "http-server");
-        assert_eq!(obj.get("timeout").unwrap(), 60);
         assert_eq!(obj.get("description").unwrap(), "");
         assert_eq!(obj.get("enabled").unwrap(), true);
-
-        let headers = obj.get("headers").unwrap().as_object().unwrap();
-        assert_eq!(headers.get("Authorization").unwrap(), "Bearer token");
     }
 
     #[test]
-    fn mcp_to_native_goose_http_with_oauth() {
+    fn mcp_to_native_goose_http_with_oauth_unsupported() {
         use crate::mcp::{HttpMcpServer, OAuthConfig};
 
         let harness = Harness::new(HarnessKind::Goose);
@@ -1567,11 +1299,11 @@ mod tests {
         });
 
         let result = harness.mcp_to_native("test", &server);
-        assert!(result.is_ok());
+        assert!(result.is_err());
     }
 
     #[test]
-    fn mcp_to_native_goose_timeout_converted_to_seconds() {
+    fn mcp_to_native_goose_timeout_unsupported() {
         use crate::mcp::StdioMcpServer;
 
         let harness = Harness::new(HarnessKind::Goose);
@@ -1584,10 +1316,8 @@ mod tests {
             timeout_ms: Some(30000),
         });
 
-        let result = harness.mcp_to_native("test", &server).unwrap();
-        let obj = result.as_object().unwrap();
-
-        assert_eq!(obj.get("timeout").unwrap(), 30);
+        let result = harness.mcp_to_native("test", &server);
+        assert!(result.is_err());
     }
 
     #[test]

@@ -50,6 +50,13 @@ pub enum Error {
     /// A required field is missing from the input.
     #[error("missing required field: {0}")]
     MissingField(String),
+
+    /// An environment variable referenced by EnvValue is not set.
+    #[error("missing environment variable: {name}")]
+    MissingEnvVar {
+        /// The name of the environment variable that was not set.
+        name: String,
+    },
 }
 
 /// A specialized Result type for harness operations.

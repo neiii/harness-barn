@@ -1,67 +1,106 @@
 //! MCP server descriptor types and parsing.
+//!
+//! Re-exports types from `harness-locate` for unified MCP representation.
 
 use std::collections::HashMap;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+
+pub use harness_locate::{EnvValue, HttpMcpServer, McpServer, SseMcpServer, StdioMcpServer};
 
 use crate::{Error, Result};
 
-/// MCP server descriptor from .mcp.json files.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct McpDescriptor {
-    /// Server name (key from the JSON object).
-    #[serde(skip)]
-    pub name: String,
-    /// Command to execute the server.
-    pub command: String,
-    /// Arguments to pass to the command.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub args: Vec<String>,
-    /// Environment variables for the server.
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub env: HashMap<String, String>,
-}
-
 #[derive(Debug, Deserialize)]
 struct McpServerEntry {
-    command: String,
+    command: Option<String>,
     #[serde(default)]
     args: Vec<String>,
     #[serde(default)]
     env: HashMap<String, String>,
+    url: Option<String>,
+    #[serde(rename = "type")]
+    transport_type: Option<String>,
 }
 
-/// Wrapped format used by Claude's .mcp.json files.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct McpJsonWrapped {
     mcp_servers: HashMap<String, McpServerEntry>,
 }
 
-fn convert_entries(map: HashMap<String, McpServerEntry>) -> Vec<McpDescriptor> {
-    map.into_iter()
-        .map(|(name, entry)| McpDescriptor {
-            name,
-            command: entry.command,
-            args: entry.args,
-            env: entry.env,
-        })
+fn convert_env(env: HashMap<String, String>) -> HashMap<String, EnvValue> {
+    env.into_iter()
+        .map(|(k, v)| (k, EnvValue::plain(v)))
         .collect()
 }
 
-/// Parse a .mcp.json file content into a list of MCP descriptors.
+fn entry_to_mcp_server(name: String, entry: McpServerEntry) -> Option<(String, McpServer)> {
+    let transport = entry.transport_type.as_deref();
+
+    match transport {
+        Some("sse") => {
+            let url = entry.url.or_else(|| entry.command.clone())?;
+            Some((
+                name,
+                McpServer::Sse(SseMcpServer {
+                    url,
+                    headers: HashMap::new(),
+                    timeout_ms: None,
+                    enabled: true,
+                }),
+            ))
+        }
+        Some("http" | "streamable-http") => {
+            let url = entry.url.or_else(|| entry.command.clone())?;
+            Some((
+                name,
+                McpServer::Http(HttpMcpServer {
+                    url,
+                    headers: HashMap::new(),
+                    timeout_ms: None,
+                    enabled: true,
+                    oauth: None,
+                }),
+            ))
+        }
+        _ => {
+            let command = entry.command?;
+            Some((
+                name,
+                McpServer::Stdio(StdioMcpServer {
+                    command,
+                    args: entry.args,
+                    env: convert_env(entry.env),
+                    timeout_ms: None,
+                    enabled: true,
+                    cwd: None,
+                }),
+            ))
+        }
+    }
+}
+
+fn convert_entries(map: HashMap<String, McpServerEntry>) -> HashMap<String, McpServer> {
+    map.into_iter()
+        .filter_map(|(name, entry)| entry_to_mcp_server(name, entry))
+        .collect()
+}
+
+/// Parse a .mcp.json file content into a map of MCP servers.
 ///
 /// Supports both formats:
 /// - Wrapped: `{ "mcpServers": { "name": { ... } } }` (Claude's format)
 /// - Flat: `{ "name": { ... } }` (plugin format)
-pub fn parse_mcp_json(content: &str) -> Result<Vec<McpDescriptor>> {
-    // Try wrapped format first (Claude's actual format)
+///
+/// Detects transport type from the `type` field:
+/// - `"sse"` → SSE transport
+/// - `"http"` or `"streamable-http"` → HTTP transport
+/// - anything else or missing → Stdio transport
+pub fn parse_mcp_json(content: &str) -> Result<HashMap<String, McpServer>> {
     if let Ok(wrapped) = serde_json::from_str::<McpJsonWrapped>(content) {
         return Ok(convert_entries(wrapped.mcp_servers));
     }
 
-    // Fall back to flat format
     let map: HashMap<String, McpServerEntry> =
         serde_json::from_str(content).map_err(Error::JsonParse)?;
 
@@ -73,20 +112,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn mcp_descriptor_serde_roundtrip() {
-        let desc = McpDescriptor {
-            name: String::new(),
-            command: "npx".to_string(),
-            args: vec!["-y".to_string(), "server".to_string()],
-            env: HashMap::from([("NODE_ENV".to_string(), "production".to_string())]),
-        };
-        let json = serde_json::to_string(&desc).unwrap();
-        assert!(json.contains("npx"));
-        assert!(json.contains("NODE_ENV"));
-    }
-
-    #[test]
-    fn parse_single_server() {
+    fn parse_single_stdio_server() {
         let content = r#"{
             "my-server": {
                 "command": "node",
@@ -96,11 +122,15 @@ mod tests {
         }"#;
         let servers = parse_mcp_json(content).unwrap();
         assert_eq!(servers.len(), 1);
-        let server = &servers[0];
-        assert_eq!(server.name, "my-server");
-        assert_eq!(server.command, "node");
-        assert_eq!(server.args, vec!["server.js"]);
-        assert_eq!(server.env.get("PORT"), Some(&"3000".to_string()));
+        let server = servers.get("my-server").unwrap();
+        match server {
+            McpServer::Stdio(s) => {
+                assert_eq!(s.command, "node");
+                assert_eq!(s.args, vec!["server.js"]);
+                assert!(s.env.contains_key("PORT"));
+            }
+            _ => panic!("Expected Stdio server"),
+        }
     }
 
     #[test]
@@ -125,9 +155,13 @@ mod tests {
         let content = r#"{"minimal": {"command": "echo"}}"#;
         let servers = parse_mcp_json(content).unwrap();
         assert_eq!(servers.len(), 1);
-        assert_eq!(servers[0].command, "echo");
-        assert!(servers[0].args.is_empty());
-        assert!(servers[0].env.is_empty());
+        match servers.get("minimal").unwrap() {
+            McpServer::Stdio(s) => {
+                assert_eq!(s.command, "echo");
+                assert!(s.args.is_empty());
+            }
+            _ => panic!("Expected Stdio server"),
+        }
     }
 
     #[test]
@@ -149,7 +183,40 @@ mod tests {
         }"#;
         let servers = parse_mcp_json(content).unwrap();
         assert_eq!(servers.len(), 1);
-        assert_eq!(servers[0].name, "my-server");
-        assert_eq!(servers[0].command, "node");
+        assert!(servers.contains_key("my-server"));
+    }
+
+    #[test]
+    fn parse_sse_server() {
+        let content = r#"{
+            "sse-server": {
+                "type": "sse",
+                "url": "http://localhost:3000/sse"
+            }
+        }"#;
+        let servers = parse_mcp_json(content).unwrap();
+        match servers.get("sse-server").unwrap() {
+            McpServer::Sse(s) => {
+                assert_eq!(s.url, "http://localhost:3000/sse");
+            }
+            _ => panic!("Expected SSE server"),
+        }
+    }
+
+    #[test]
+    fn parse_http_server() {
+        let content = r#"{
+            "http-server": {
+                "type": "http",
+                "url": "http://localhost:3000/mcp"
+            }
+        }"#;
+        let servers = parse_mcp_json(content).unwrap();
+        match servers.get("http-server").unwrap() {
+            McpServer::Http(s) => {
+                assert_eq!(s.url, "http://localhost:3000/mcp");
+            }
+            _ => panic!("Expected HTTP server"),
+        }
     }
 }
