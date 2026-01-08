@@ -8,8 +8,54 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::types::{EnvValue, HarnessKind};
 use crate::Error;
+use crate::types::{EnvValue, HarnessKind};
+
+/// Represents tool selection/filtering for MCP servers.
+///
+/// Different harnesses expose tool filtering in different ways:
+/// - **Copilot CLI**: Required `tools` array (supports `"*"` for all tools)
+/// - **Goose**: Optional `available_tools` array (omitted = all tools)  
+/// - **Claude Code**, **OpenCode**, **AmpCode**: No per-server tool filtering
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum McpToolSelection {
+    All,
+    Only(Vec<String>),
+}
+
+impl McpToolSelection {
+    pub fn allows_all(&self) -> bool {
+        matches!(self, Self::All)
+    }
+
+    pub fn allowed_tools(&self) -> Option<&[String]> {
+        match self {
+            Self::All => None,
+            Self::Only(tools) => Some(tools),
+        }
+    }
+}
+
+impl Default for McpToolSelection {
+    fn default() -> Self {
+        Self::All
+    }
+}
+
+/// Configuration for an MCP server with tool selection.
+///
+/// Wraps an [`McpServer`] with optional tool filtering configuration.
+/// This preserves tool allowlists across parse/serialize cycles for
+/// harnesses that support per-server tool filtering.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct McpServerConfig {
+    #[serde(flatten)]
+    pub server: McpServer,
+
+    #[serde(default, skip_serializing_if = "McpToolSelection::allows_all")]
+    pub tool_selection: McpToolSelection,
+}
 
 /// Returns `true` for serde default.
 fn default_true() -> bool {
@@ -1031,9 +1077,11 @@ mod tests {
             timeout_ms: None,
         });
 
-        assert!(server
-            .validate_capabilities(HarnessKind::ClaudeCode)
-            .is_ok());
+        assert!(
+            server
+                .validate_capabilities(HarnessKind::ClaudeCode)
+                .is_ok()
+        );
         assert!(server.validate_capabilities(HarnessKind::OpenCode).is_ok());
         assert!(server.validate_capabilities(HarnessKind::Goose).is_ok());
         assert!(server.validate_capabilities(HarnessKind::AmpCode).is_ok());
@@ -1048,9 +1096,11 @@ mod tests {
             timeout_ms: None,
         });
 
-        assert!(server
-            .validate_capabilities(HarnessKind::ClaudeCode)
-            .is_ok());
+        assert!(
+            server
+                .validate_capabilities(HarnessKind::ClaudeCode)
+                .is_ok()
+        );
         assert!(server.validate_capabilities(HarnessKind::OpenCode).is_ok());
         assert!(server.validate_capabilities(HarnessKind::Goose).is_err());
         assert!(server.validate_capabilities(HarnessKind::AmpCode).is_err());
@@ -1066,9 +1116,11 @@ mod tests {
             timeout_ms: None,
         });
 
-        assert!(server
-            .validate_capabilities(HarnessKind::ClaudeCode)
-            .is_ok());
+        assert!(
+            server
+                .validate_capabilities(HarnessKind::ClaudeCode)
+                .is_ok()
+        );
         assert!(server.validate_capabilities(HarnessKind::OpenCode).is_ok());
         assert!(server.validate_capabilities(HarnessKind::Goose).is_ok());
         assert!(server.validate_capabilities(HarnessKind::AmpCode).is_err());
@@ -1150,5 +1202,110 @@ mod tests {
             .unwrap();
         assert_eq!(value["type"], "http");
         assert_eq!(value["url"], "http://localhost:8080");
+    }
+
+    #[test]
+    fn mcp_tool_selection_allows_all() {
+        let selection = McpToolSelection::All;
+        assert!(selection.allows_all());
+        assert_eq!(selection.allowed_tools(), None);
+    }
+
+    #[test]
+    fn mcp_tool_selection_only() {
+        let tools = vec!["read_file".to_string(), "write_file".to_string()];
+        let selection = McpToolSelection::Only(tools.clone());
+        assert!(!selection.allows_all());
+        assert_eq!(selection.allowed_tools(), Some(tools.as_slice()));
+    }
+
+    #[test]
+    fn mcp_tool_selection_default() {
+        let selection = McpToolSelection::default();
+        assert_eq!(selection, McpToolSelection::All);
+    }
+
+    #[test]
+    fn mcp_server_config_with_all_tools() {
+        let server = McpServer::Stdio(StdioMcpServer {
+            command: "test".to_string(),
+            args: vec![],
+            env: HashMap::new(),
+            cwd: None,
+            enabled: true,
+            timeout_ms: None,
+        });
+
+        let config = McpServerConfig {
+            server,
+            tool_selection: McpToolSelection::All,
+        };
+
+        assert!(config.tool_selection.allows_all());
+    }
+
+    #[test]
+    fn mcp_server_config_with_specific_tools() {
+        let server = McpServer::Stdio(StdioMcpServer {
+            command: "test".to_string(),
+            args: vec![],
+            env: HashMap::new(),
+            cwd: None,
+            enabled: true,
+            timeout_ms: None,
+        });
+
+        let tools = vec!["read_file".to_string()];
+        let config = McpServerConfig {
+            server,
+            tool_selection: McpToolSelection::Only(tools.clone()),
+        };
+
+        assert_eq!(
+            config.tool_selection.allowed_tools(),
+            Some(tools.as_slice())
+        );
+    }
+
+    #[test]
+    fn mcp_server_config_serialization() {
+        let server = McpServer::Stdio(StdioMcpServer {
+            command: "npx".to_string(),
+            args: vec!["-y".to_string(), "server".to_string()],
+            env: HashMap::new(),
+            cwd: None,
+            enabled: true,
+            timeout_ms: None,
+        });
+
+        let config = McpServerConfig {
+            server,
+            tool_selection: McpToolSelection::Only(vec!["read_file".to_string()]),
+        };
+
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: McpServerConfig = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed, config);
+    }
+
+    #[test]
+    fn mcp_server_config_skips_all_tools_in_json() {
+        let server = McpServer::Stdio(StdioMcpServer {
+            command: "test".to_string(),
+            args: vec![],
+            env: HashMap::new(),
+            cwd: None,
+            enabled: true,
+            timeout_ms: None,
+        });
+
+        let config = McpServerConfig {
+            server,
+            tool_selection: McpToolSelection::All,
+        };
+
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(!json.contains("tool_selection"));
     }
 }
