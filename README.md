@@ -11,7 +11,7 @@ Rust workspace for AI coding harness detection and skill discovery.
 
 ## harness-locate
 
-Cross-platform detection for Claude Code, OpenCode, Goose, and AMP Code.
+Cross-platform detection for Claude Code, OpenCode, Goose, AMP Code, and Crush.
 
 ```rust
 use harness_locate::{Harness, HarnessKind, Scope};
