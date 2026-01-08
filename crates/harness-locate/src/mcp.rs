@@ -17,9 +17,10 @@ use crate::types::{EnvValue, HarnessKind};
 /// - **Copilot CLI**: Required `tools` array (supports `"*"` for all tools)
 /// - **Goose**: Optional `available_tools` array (omitted = all tools)  
 /// - **Claude Code**, **OpenCode**, **AmpCode**: No per-server tool filtering
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(untagged)]
 pub enum McpToolSelection {
+    #[default]
     All,
     Only(Vec<String>),
 }
@@ -34,12 +35,6 @@ impl McpToolSelection {
             Self::All => None,
             Self::Only(tools) => Some(tools),
         }
-    }
-}
-
-impl Default for McpToolSelection {
-    fn default() -> Self {
-        Self::All
     }
 }
 
