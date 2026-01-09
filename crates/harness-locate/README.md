@@ -85,7 +85,7 @@ Different harnesses use different directory names. Use `HarnessKind::directory_n
 
 **Note:** OpenCode uses singular names; all others use plural.
 
-**Note:** Copilot CLI uses `.github/` for project-scoped skills, agents, and rules.
+**Note:** Copilot CLI uses `.github/` for project-scoped agents and rules.
 
 ## Resource Types
 

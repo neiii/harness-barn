@@ -428,18 +428,14 @@ impl Harness {
             HarnessKind::CopilotCli => {
                 let path = copilot_cli::agents_dir(scope)
                     .ok_or_else(|| Error::NotFound("agents directory".into()))?;
-                // Global agents are JSON, project agents are Markdown
-                let (file_pattern, file_format) = match scope {
-                    Scope::Global => ("*.json".into(), FileFormat::Json),
-                    Scope::Project(_) | Scope::Custom(_) => {
-                        ("*.md".into(), FileFormat::MarkdownWithFrontmatter)
-                    }
-                };
+                // Global and project agents are Markdown
                 Ok(Some(DirectoryResource {
                     exists: path.exists(),
                     path,
-                    structure: DirectoryStructure::Flat { file_pattern },
-                    file_format,
+                    structure: DirectoryStructure::Flat {
+                        file_pattern: "*.md".into(),
+                    },
+                    file_format: FileFormat::MarkdownWithFrontmatter,
                 }))
             }
             HarnessKind::Goose | HarnessKind::AmpCode => Ok(None),
@@ -531,7 +527,7 @@ impl Harness {
             }
             HarnessKind::CopilotCli => {
                 // Copilot CLI uses mcp-config.json in config directories
-                let base = copilot_cli::config_dir(scope)?;
+                let base = copilot_cli::mcp_dir(scope)?;
                 (
                     base.join("mcp-config.json"),
                     "/mcpServers".into(),
