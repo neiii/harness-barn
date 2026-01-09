@@ -61,30 +61,38 @@ pub fn config_dir(scope: &Scope) -> Result<PathBuf> {
 
 /// Returns the MCP configuration directory for the given scope.
 ///
-/// Copilot CLI stores MCP configuration in `mcp-config.json` in the config directory.
+/// Copilot CLI stores MCP configuration in `mcp-config.json`.
+/// Note that project-local MCP configuration is not natively supported.
 pub fn mcp_dir(scope: &Scope) -> Result<PathBuf> {
-    config_dir(scope)
+    match scope {
+        Scope::Global => global_config_dir(),
+        Scope::Project(_) => Err(Error::UnsupportedScope {
+            harness: "Copilot CLI".to_string(),
+            scope: "project".to_string(),
+        }),
+        Scope::Custom(path) => Ok(path.clone()),
+    }
 }
 
 /// Returns the skills directory for the given scope.
 ///
-/// Copilot CLI stores skills following the agentskills.io spec:
+/// Copilot CLI stores skills following the agentskills.io spec.
+/// Note that project-local skills are not yet natively supported in the CLI.
 /// - **Global**: `~/.copilot/skills/`
-/// - **Project**: `.github/skills/`
 #[must_use]
 pub fn skills_dir(scope: &Scope) -> Option<PathBuf> {
     match scope {
         Scope::Global => global_config_dir().ok().map(|p| p.join("skills")),
-        Scope::Project(root) => Some(project_config_dir(root).join("skills")),
+        Scope::Project(_) => None,
         Scope::Custom(path) => Some(path.join("skills")),
     }
 }
 
 /// Returns the agents directory for the given scope.
 ///
-/// Copilot CLI stores agents as:
-/// - **Global**: `~/.copilot/agents/` (JSON files)
-/// - **Project**: `.github/agents/` (Markdown files with frontmatter)
+/// Copilot CLI stores agents as Markdown files with YAML frontmatter:
+/// - **Global**: `~/.copilot/agents/`
+/// - **Project**: `.github/agents/`
 #[must_use]
 pub fn agents_dir(scope: &Scope) -> Option<PathBuf> {
     match scope {
@@ -147,85 +155,8 @@ pub(crate) fn parse_mcp_server(value: &serde_json::Value) -> Result<McpServer> {
     // Check if this is an SSE or HTTP server (has "type" field)
     if let Some(server_type) = obj.get("type").and_then(|v| v.as_str()) {
         match server_type {
-            "sse" => {
-                let url = obj
-                    .get("url")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| Error::UnsupportedMcpConfig {
-                        harness: "Copilot CLI".to_string(),
-                        reason: "SSE server missing 'url' field".to_string(),
-                    })?
-                    .to_string();
-
-                let mut headers = HashMap::new();
-                if let Some(headers_value) = obj.get("headers") {
-                    let headers_obj =
-                        headers_value
-                            .as_object()
-                            .ok_or_else(|| Error::UnsupportedMcpConfig {
-                                harness: "Copilot CLI".to_string(),
-                                reason: "'headers' must be an object".to_string(),
-                            })?;
-                    for (key, value) in headers_obj {
-                        let value_str =
-                            value.as_str().ok_or_else(|| Error::UnsupportedMcpConfig {
-                                harness: "Copilot CLI".to_string(),
-                                reason: format!("Header '{}' must be a string", key),
-                            })?;
-                        headers.insert(
-                            key.clone(),
-                            EnvValue::from_native(value_str, HarnessKind::CopilotCli),
-                        );
-                    }
-                }
-
-                Ok(McpServer::Sse(SseMcpServer {
-                    url,
-                    headers,
-                    enabled: true,
-                    timeout_ms: obj.get("timeout").and_then(|v| v.as_u64()),
-                }))
-            }
-            "http" => {
-                let url = obj
-                    .get("url")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| Error::UnsupportedMcpConfig {
-                        harness: "Copilot CLI".to_string(),
-                        reason: "HTTP server missing 'url' field".to_string(),
-                    })?
-                    .to_string();
-
-                let mut headers = HashMap::new();
-                if let Some(headers_value) = obj.get("headers") {
-                    let headers_obj =
-                        headers_value
-                            .as_object()
-                            .ok_or_else(|| Error::UnsupportedMcpConfig {
-                                harness: "Copilot CLI".to_string(),
-                                reason: "'headers' must be an object".to_string(),
-                            })?;
-                    for (key, value) in headers_obj {
-                        let value_str =
-                            value.as_str().ok_or_else(|| Error::UnsupportedMcpConfig {
-                                harness: "Copilot CLI".to_string(),
-                                reason: format!("Header '{}' must be a string", key),
-                            })?;
-                        headers.insert(
-                            key.clone(),
-                            EnvValue::from_native(value_str, HarnessKind::CopilotCli),
-                        );
-                    }
-                }
-
-                Ok(McpServer::Http(HttpMcpServer {
-                    url,
-                    headers,
-                    oauth: None,
-                    enabled: true,
-                    timeout_ms: obj.get("timeout").and_then(|v| v.as_u64()),
-                }))
-            }
+            "sse" => parse_sse_server(obj),
+            "http" => parse_http_server(obj),
             "stdio" | "local" => parse_stdio_server(obj),
             _ => Err(Error::UnsupportedMcpConfig {
                 harness: "Copilot CLI".to_string(),
@@ -269,25 +200,7 @@ fn parse_stdio_server(obj: &serde_json::Map<String, serde_json::Value>) -> Resul
         Vec::new()
     };
 
-    let mut env = HashMap::new();
-    if let Some(env_value) = obj.get("env") {
-        let env_obj = env_value
-            .as_object()
-            .ok_or_else(|| Error::UnsupportedMcpConfig {
-                harness: "Copilot CLI".to_string(),
-                reason: "'env' must be an object".to_string(),
-            })?;
-        for (key, value) in env_obj {
-            let value_str = value.as_str().ok_or_else(|| Error::UnsupportedMcpConfig {
-                harness: "Copilot CLI".to_string(),
-                reason: format!("Environment variable '{}' must be a string", key),
-            })?;
-            env.insert(
-                key.clone(),
-                EnvValue::from_native(value_str, HarnessKind::CopilotCli),
-            );
-        }
-    }
+    let env = parse_string_map(obj, "env", "Environment variable")?;
 
     Ok(McpServer::Stdio(StdioMcpServer {
         command,
@@ -297,6 +210,73 @@ fn parse_stdio_server(obj: &serde_json::Map<String, serde_json::Value>) -> Resul
         enabled: true,
         timeout_ms: obj.get("timeout").and_then(|v| v.as_u64()),
     }))
+}
+
+fn parse_sse_server(obj: &serde_json::Map<String, serde_json::Value>) -> Result<McpServer> {
+    let url = obj
+        .get("url")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| Error::UnsupportedMcpConfig {
+            harness: "Copilot CLI".to_string(),
+            reason: "SSE server missing 'url' field".to_string(),
+        })?
+        .to_string();
+
+    let headers = parse_string_map(obj, "headers", "Header")?;
+
+    Ok(McpServer::Sse(SseMcpServer {
+        url,
+        headers,
+        enabled: true,
+        timeout_ms: obj.get("timeout").and_then(|v| v.as_u64()),
+    }))
+}
+
+fn parse_http_server(obj: &serde_json::Map<String, serde_json::Value>) -> Result<McpServer> {
+    let url = obj
+        .get("url")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| Error::UnsupportedMcpConfig {
+            harness: "Copilot CLI".to_string(),
+            reason: "HTTP server missing 'url' field".to_string(),
+        })?
+        .to_string();
+
+    let headers = parse_string_map(obj, "headers", "Header")?;
+
+    Ok(McpServer::Http(HttpMcpServer {
+        url,
+        headers,
+        oauth: None,
+        enabled: true,
+        timeout_ms: obj.get("timeout").and_then(|v| v.as_u64()),
+    }))
+}
+
+fn parse_string_map(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    field: &str,
+    item_desc: &str,
+) -> Result<HashMap<String, EnvValue>> {
+    let mut map = HashMap::new();
+    if let Some(value) = obj.get(field) {
+        let map_obj = value.as_object().ok_or_else(|| Error::UnsupportedMcpConfig {
+            harness: "Copilot CLI".to_string(),
+            reason: format!("'{}' must be an object", field),
+        })?;
+
+        for (key, value) in map_obj {
+            let value_str = value.as_str().ok_or_else(|| Error::UnsupportedMcpConfig {
+                harness: "Copilot CLI".to_string(),
+                reason: format!("{} '{}' must be a string", item_desc, key),
+            })?;
+            map.insert(
+                key.clone(),
+                EnvValue::from_native(value_str, HarnessKind::CopilotCli),
+            );
+        }
+    }
+    Ok(map)
 }
 
 /// Parses all MCP servers from a Copilot CLI config JSON.
@@ -363,12 +343,10 @@ mod tests {
     }
 
     #[test]
-    fn skills_dir_project_uses_github_dir() {
+    fn skills_dir_project_unsupported() {
         let root = PathBuf::from("/some/project");
         let result = skills_dir(&Scope::Project(root));
-        assert!(result.is_some());
-        let path = result.unwrap();
-        assert_eq!(path, PathBuf::from("/some/project/.github/skills"));
+        assert!(result.is_none());
     }
 
     #[test]
