@@ -41,7 +41,7 @@ for plugin in plugins {
 
 ```toml
 [dependencies]
-harness-locate = "0.3"
+harness-locate = "0.4"
 skills-locate = "0.2"
 ```
 
