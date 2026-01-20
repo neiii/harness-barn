@@ -27,6 +27,8 @@ pub enum HarnessKind {
     AmpCode,
     /// GitHub Copilot CLI (@github/copilot npm package)
     CopilotCli,
+    /// Crush (Charmbracelet's AI coding assistant)
+    Crush,
 }
 
 impl fmt::Display for HarnessKind {
@@ -37,12 +39,12 @@ impl fmt::Display for HarnessKind {
             Self::Goose => write!(f, "Goose"),
             Self::AmpCode => write!(f, "AMP Code"),
             Self::CopilotCli => write!(f, "Copilot CLI"),
+            Self::Crush => write!(f, "Crush"),
         }
     }
 }
 
 impl HarnessKind {
-    /// Returns the display name of this harness kind.
     #[must_use]
     pub const fn as_str(&self) -> &'static str {
         match self {
@@ -51,6 +53,7 @@ impl HarnessKind {
             Self::Goose => "Goose",
             Self::AmpCode => "AMP Code",
             Self::CopilotCli => "Copilot CLI",
+            Self::Crush => "Crush",
         }
     }
 
@@ -74,6 +77,7 @@ impl HarnessKind {
         Self::Goose,
         Self::AmpCode,
         Self::CopilotCli,
+        Self::Crush,
     ];
 
     /// Returns the known CLI binary names for this harness.
@@ -98,6 +102,7 @@ impl HarnessKind {
             Self::Goose => &["goose"],
             Self::AmpCode => &["amp"],
             Self::CopilotCli => &["copilot"],
+            Self::Crush => &["crush"],
         }
     }
 
@@ -158,6 +163,9 @@ impl HarnessKind {
             // Copilot CLI - plural names, skills and agents only
             (Self::CopilotCli, ResourceKind::Skills) => Some(&["skills"]),
             (Self::CopilotCli, ResourceKind::Agents) => Some(&["agents"]),
+
+            // Crush - skills only (like Goose)
+            (Self::Crush, ResourceKind::Skills) => Some(&["skills"]),
 
             // Unsupported combinations
             _ => None,
@@ -521,7 +529,7 @@ impl EnvValue {
                 HarnessKind::ClaudeCode | HarnessKind::AmpCode | HarnessKind::CopilotCli => {
                     format!("${{{env}}}")
                 }
-                HarnessKind::OpenCode => format!("{{env:{env}}}"),
+                HarnessKind::OpenCode | HarnessKind::Crush => format!("{{env:{env}}}"),
                 HarnessKind::Goose => std::env::var(env).unwrap_or_default(),
             },
         }
@@ -564,7 +572,7 @@ impl EnvValue {
                 HarnessKind::ClaudeCode | HarnessKind::AmpCode | HarnessKind::CopilotCli => {
                     Ok(format!("${{{env}}}"))
                 }
-                HarnessKind::OpenCode => Ok(format!("{{env:{env}}}")),
+                HarnessKind::OpenCode | HarnessKind::Crush => Ok(format!("{{env:{env}}}")),
                 HarnessKind::Goose => std::env::var(env)
                     .map_err(|_| crate::Error::MissingEnvVar { name: env.clone() }),
             },
@@ -611,8 +619,7 @@ impl EnvValue {
                     Self::Plain(s.to_string())
                 }
             }
-            HarnessKind::OpenCode => {
-                // Parse {env:VAR} pattern
+            HarnessKind::OpenCode | HarnessKind::Crush => {
                 if let Some(var) = s.strip_prefix("{env:").and_then(|s| s.strip_suffix('}')) {
                     Self::EnvRef {
                         env: var.to_string(),
@@ -621,10 +628,7 @@ impl EnvValue {
                     Self::Plain(s.to_string())
                 }
             }
-            HarnessKind::Goose => {
-                // Goose doesn't use inline env var syntax; values are always plain
-                Self::Plain(s.to_string())
-            }
+            HarnessKind::Goose => Self::Plain(s.to_string()),
         }
     }
 

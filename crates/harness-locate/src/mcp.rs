@@ -142,7 +142,7 @@ impl McpServer {
         match kind {
             HarnessKind::ClaudeCode => self.to_claude_code_value(kind),
             HarnessKind::CopilotCli => self.to_copilot_cli_value(kind),
-            HarnessKind::OpenCode => self.to_opencode_value(kind),
+            HarnessKind::OpenCode | HarnessKind::Crush => self.to_opencode_value(kind),
             HarnessKind::Goose => self.to_goose_value(kind, name),
             HarnessKind::AmpCode => self.to_ampcode_value(kind),
         }
@@ -690,6 +690,16 @@ impl McpCapabilities {
                 oauth: false,
                 timeout: true,
                 toggle: false,
+                headers: true,
+                cwd: false,
+            },
+            HarnessKind::Crush => Self {
+                stdio: true,
+                sse: true,
+                http: true,
+                oauth: false,
+                timeout: true,
+                toggle: true,
                 headers: true,
                 cwd: false,
             },
