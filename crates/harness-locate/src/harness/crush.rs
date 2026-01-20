@@ -65,7 +65,7 @@ pub fn mcp_dir(scope: &Scope) -> Result<PathBuf> {
 /// - Global: `~/.config/crush/skills/`
 /// - Project: `.crush/skills/`
 ///
-/// Skills use the same SKILL.md format with YAML frontmatter.
+/// Skills use plain Markdown format (frontmatter optional).
 #[must_use]
 pub fn skills_dir(scope: &Scope) -> Option<PathBuf> {
     match scope {
