@@ -29,6 +29,8 @@ pub enum HarnessKind {
     CopilotCli,
     /// Crush (Charmbracelet's AI coding assistant)
     Crush,
+    /// Factory Droid (Factory's AI coding assistant)
+    Droid,
 }
 
 impl fmt::Display for HarnessKind {
@@ -40,6 +42,7 @@ impl fmt::Display for HarnessKind {
             Self::AmpCode => write!(f, "AMP Code"),
             Self::CopilotCli => write!(f, "Copilot CLI"),
             Self::Crush => write!(f, "Crush"),
+            Self::Droid => write!(f, "Droid"),
         }
     }
 }
@@ -54,6 +57,7 @@ impl HarnessKind {
             Self::AmpCode => "AMP Code",
             Self::CopilotCli => "Copilot CLI",
             Self::Crush => "Crush",
+            Self::Droid => "Droid",
         }
     }
 
@@ -78,6 +82,7 @@ impl HarnessKind {
         Self::AmpCode,
         Self::CopilotCli,
         Self::Crush,
+        Self::Droid,
     ];
 
     /// Returns the known CLI binary names for this harness.
@@ -103,6 +108,7 @@ impl HarnessKind {
             Self::AmpCode => &["amp"],
             Self::CopilotCli => &["copilot"],
             Self::Crush => &["crush"],
+            Self::Droid => &["droid"],
         }
     }
 
@@ -166,6 +172,11 @@ impl HarnessKind {
 
             // Crush - skills only (like Goose)
             (Self::Crush, ResourceKind::Skills) => Some(&["skills"]),
+
+            // Droid - plural names (like Claude Code)
+            (Self::Droid, ResourceKind::Skills) => Some(&["skills"]),
+            (Self::Droid, ResourceKind::Commands) => Some(&["commands"]),
+            (Self::Droid, ResourceKind::Agents) => Some(&["droids"]),
 
             // Unsupported combinations
             _ => None,
@@ -526,7 +537,10 @@ impl EnvValue {
         match self {
             Self::Plain(s) => s.clone(),
             Self::EnvRef { env } => match kind {
-                HarnessKind::ClaudeCode | HarnessKind::AmpCode | HarnessKind::CopilotCli => {
+                HarnessKind::ClaudeCode
+                | HarnessKind::AmpCode
+                | HarnessKind::CopilotCli
+                | HarnessKind::Droid => {
                     format!("${{{env}}}")
                 }
                 HarnessKind::OpenCode | HarnessKind::Crush => format!("{{env:{env}}}"),
@@ -569,9 +583,10 @@ impl EnvValue {
         match self {
             Self::Plain(s) => Ok(s.clone()),
             Self::EnvRef { env } => match kind {
-                HarnessKind::ClaudeCode | HarnessKind::AmpCode | HarnessKind::CopilotCli => {
-                    Ok(format!("${{{env}}}"))
-                }
+                HarnessKind::ClaudeCode
+                | HarnessKind::AmpCode
+                | HarnessKind::CopilotCli
+                | HarnessKind::Droid => Ok(format!("${{{env}}}")),
                 HarnessKind::OpenCode | HarnessKind::Crush => Ok(format!("{{env:{env}}}")),
                 HarnessKind::Goose => std::env::var(env)
                     .map_err(|_| crate::Error::MissingEnvVar { name: env.clone() }),
@@ -610,7 +625,10 @@ impl EnvValue {
     #[must_use]
     pub fn from_native(s: &str, kind: HarnessKind) -> Self {
         match kind {
-            HarnessKind::ClaudeCode | HarnessKind::AmpCode | HarnessKind::CopilotCli => {
+            HarnessKind::ClaudeCode
+            | HarnessKind::AmpCode
+            | HarnessKind::CopilotCli
+            | HarnessKind::Droid => {
                 if let Some(var) = s.strip_prefix("${").and_then(|s| s.strip_suffix('}')) {
                     Self::EnvRef {
                         env: var.to_string(),
