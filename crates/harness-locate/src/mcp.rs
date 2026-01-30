@@ -145,6 +145,7 @@ impl McpServer {
             HarnessKind::OpenCode | HarnessKind::Crush => self.to_opencode_value(kind),
             HarnessKind::Goose => self.to_goose_value(kind, name),
             HarnessKind::AmpCode => self.to_ampcode_value(kind),
+            HarnessKind::Droid => self.to_droid_value(kind),
         }
     }
 
@@ -407,6 +408,73 @@ impl McpServer {
                 harness: kind.to_string(),
                 reason: "HTTP transport not supported".into(),
             }),
+        }
+    }
+
+    fn to_droid_value(&self, kind: HarnessKind) -> Result<serde_json::Value, Error> {
+        match self {
+            Self::Stdio(s) => {
+                let mut obj = serde_json::json!({
+                    "command": s.command,
+                    "args": s.args,
+                });
+                if !s.env.is_empty() {
+                    let env: std::collections::HashMap<String, String> = s
+                        .env
+                        .iter()
+                        .map(|(k, v)| Ok((k.clone(), v.try_to_native(kind)?)))
+                        .collect::<Result<_, Error>>()?;
+                    obj["env"] = serde_json::to_value(env).unwrap();
+                }
+                if !s.enabled {
+                    obj["disabled"] = serde_json::json!(true);
+                }
+                if let Some(timeout_ms) = s.timeout_ms {
+                    obj["timeout"] = serde_json::json!(timeout_ms);
+                }
+                Ok(obj)
+            }
+            Self::Sse(s) => {
+                let mut obj = serde_json::json!({
+                    "url": s.url,
+                });
+                if !s.headers.is_empty() {
+                    let headers: std::collections::HashMap<String, String> = s
+                        .headers
+                        .iter()
+                        .map(|(k, v)| Ok((k.clone(), v.try_to_native(kind)?)))
+                        .collect::<Result<_, Error>>()?;
+                    obj["headers"] = serde_json::to_value(headers).unwrap();
+                }
+                if !s.enabled {
+                    obj["disabled"] = serde_json::json!(true);
+                }
+                if let Some(timeout_ms) = s.timeout_ms {
+                    obj["timeout"] = serde_json::json!(timeout_ms);
+                }
+                Ok(obj)
+            }
+            Self::Http(h) => {
+                let mut obj = serde_json::json!({
+                    "type": "http",
+                    "url": h.url,
+                });
+                if !h.headers.is_empty() {
+                    let headers: std::collections::HashMap<String, String> = h
+                        .headers
+                        .iter()
+                        .map(|(k, v)| Ok((k.clone(), v.try_to_native(kind)?)))
+                        .collect::<Result<_, Error>>()?;
+                    obj["headers"] = serde_json::to_value(headers).unwrap();
+                }
+                if !h.enabled {
+                    obj["disabled"] = serde_json::json!(true);
+                }
+                if let Some(timeout_ms) = h.timeout_ms {
+                    obj["timeout"] = serde_json::json!(timeout_ms);
+                }
+                Ok(obj)
+            }
         }
     }
 }
@@ -698,6 +766,16 @@ impl McpCapabilities {
                 sse: true,
                 http: true,
                 oauth: false,
+                timeout: true,
+                toggle: true,
+                headers: true,
+                cwd: false,
+            },
+            HarnessKind::Droid => Self {
+                stdio: true,
+                sse: true,
+                http: true,
+                oauth: true,
                 timeout: true,
                 toggle: true,
                 headers: true,
